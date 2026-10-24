@@ -230,26 +230,32 @@ class SwarmRunManager(RunManager):
                 logger.info("Interview step complete, awaiting further user input.")
                 return
 
+            spec = self.queen.get_current_spec()
+            self.be_worker.current_spec = spec
+            self.fe_worker.current_spec = spec
+
             # If enabled, Research Bee gathers live web specs prior to worker build
             if self.enable_tinyfish and self.research_bee:
                 await asyncio.sleep(get_pacing_delay("turn"))
-                await self.research_bee.execute_research("best practice waitlist form fields 2026", run_id=self.run_id)
+                await self.research_bee.execute_research(spec.research_topic, run_id=self.run_id)
 
             # 2. Parallel construction: BE Worker and FE Worker execute tasks
             await asyncio.sleep(get_pacing_delay("phase"))
             await self.be_worker.execute_task(
                 task_id="task-be-api",
-                title="FastAPI Waitlist Submission Endpoint",
-                description="Construct POST /api/waitlist route with Pydantic email validation",
+                title=f"FastAPI {spec.project_name} Route ({spec.api_endpoint})",
+                description=f"Construct POST {spec.api_endpoint} endpoint with schema validation",
                 run_id=self.run_id,
+                spec=spec,
             )
 
             await asyncio.sleep(get_pacing_delay("phase"))
             await self.fe_worker.execute_task(
                 task_id="task-fe-hero",
-                title="Responsive Waitlist Hero Section",
-                description="Build dark modern UI with honeycomb styling and responsive form inputs",
+                title=f"Responsive {spec.project_name} UI",
+                description=f"Build responsive interface with honeycomb styling and dynamic {spec.form_title} inputs",
                 run_id=self.run_id,
+                spec=spec,
             )
 
             # 3. QA Loop: automated browser verification with failure routing (max 2 retries)
@@ -263,7 +269,7 @@ class SwarmRunManager(RunManager):
                     await asyncio.sleep(get_pacing_delay("turn"))
                     qa_res = await self.qa_bee.execute_browser_verification(
                         target_url=preview_url,
-                        goal="Verify waitlist form submission and confirmation banner",
+                        goal=spec.qa_goal,
                         run_id=self.run_id,
                     )
 

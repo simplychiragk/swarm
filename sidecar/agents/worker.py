@@ -17,6 +17,7 @@ from sidecar.models.contracts import (
     CardStatus,
     FeedMessage,
 )
+from sidecar.models.specs import ProjectSpec, ProjectField, extract_project_spec
 from sidecar.llm import complete
 from .base import BaseAgent
 from .bus import MessageBus
@@ -52,6 +53,7 @@ class WorkerAgent(BaseAgent):
         self.seeded_bug_active = (os.environ.get("SWARM_DEMO_MODE", "").lower() == "seeded_bug")
         self.bug_fixed = False
         self.has_phone_field = False
+        self.current_spec: Optional[ProjectSpec] = None
 
     async def write_deliverable_artifact(self, filename: str, content: str, run_id: str = "run-default") -> None:
         """
@@ -72,8 +74,15 @@ class WorkerAgent(BaseAgent):
         else:
             logger.info(f"Worker '{self.name}' persisted deliverable '{clean_name}' ({len(content)} bytes)")
 
-    async def _write_frontend_project(self, run_id: str = "run-default", with_bug: bool = False, with_phone: bool = False) -> None:
+    async def _write_frontend_project(
+        self,
+        run_id: str = "run-default",
+        spec: Optional[ProjectSpec] = None,
+        with_bug: bool = False,
+        with_phone: bool = False,
+    ) -> None:
         """Writes real working HTML, CSS, and JS landing page into workspace/<run_id>/."""
+        spec = spec or self.current_spec or extract_project_spec("waitlist")
         disabled_attr = "disabled" if with_bug else ""
         include_phone = with_phone or self.has_phone_field
 
@@ -90,51 +99,71 @@ class WorkerAgent(BaseAgent):
             </div>
           </div>""" if include_phone else ""
 
+        fields_html = []
+        for f in spec.fields:
+            if f.type == "select":
+                opts = "\n".join(f'                <option value="{o}">{o}</option>' for o in (f.options or []))
+                fields_html.append(f"""          <div class="form-group">
+            <label for="{f.id}">{f.label}</label>
+            <select id="{f.id}" name="{f.id}">
+{opts}
+            </select>
+          </div>""")
+            elif f.type == "textarea":
+                fields_html.append(f"""          <div class="form-group">
+            <label for="{f.id}">{f.label}</label>
+            <textarea id="{f.id}" name="{f.id}" placeholder="{f.placeholder or ''}" rows="3" style="width: 100%; box-sizing: border-box; padding: 10px; background: #18191b; border: 1px solid var(--border); border-radius: 6px; color: #fff; font-family: inherit;" required></textarea>
+          </div>""")
+            else:
+                fields_html.append(f"""          <div class="form-group">
+            <label for="{f.id}">{f.label}</label>
+            <input type="{f.type}" id="{f.id}" name="{f.id}" placeholder="{f.placeholder or ''}" required />
+          </div>""")
+
+        if phone_html:
+            fields_html.append(phone_html)
+
+        rendered_form_fields = "\n".join(fields_html)
+
+        extra_sections_html = ""
+        for sec in spec.extra_sections:
+            sec_title = sec.get("title", "Highlights")
+            items = "".join(f'<li style="margin-bottom: 8px; color: var(--text-muted);">{it}</li>' for it in sec.get("items", []))
+            extra_sections_html += f"""
+        <div class="card" style="margin-top: 24px; text-align: left;">
+          <h3 style="color: var(--honey); margin-top: 0;">{sec_title}</h3>
+          <ul style="padding-left: 20px; font-size: 14px;">{items}</ul>
+        </div>"""
+
         index_html = f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Swarm - Autonomous Developer Waitlist</title>
+  <title>{spec.project_name}</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <header class="navbar">
-    <div class="logo">🐝 Swarm</div>
-    <nav><a href="#waitlist" class="btn-link">Join Waitlist</a></nav>
+    <div class="logo">🐝 {spec.project_name.split(' - ')[0]}</div>
+    <nav><a href="#action-section" class="btn-link">{spec.form_action_label}</a></nav>
   </header>
   <main>
-    <section class="hero" id="waitlist">
-      <h1>Autonomous AI Swarm Development</h1>
-      <p>A queen, specialized workers, and TinyFish web agents building software end-to-end.</p>
+    <section class="hero" id="action-section">
+      <h1>{spec.project_name}</h1>
+      <p>{spec.tagline}</p>
       <div class="card form-card">
-        <h2>Request Early Access</h2>
+        <h2>{spec.form_title}</h2>
         <form id="waitlist-form">
-          <div class="form-group">
-            <label for="name">Full Name</label>
-            <input type="text" id="name" name="name" placeholder="Alex Morgan" required />
-          </div>
-          <div class="form-group">
-            <label for="email">Work Email</label>
-            <input type="email" id="email" name="email" placeholder="alex@company.com" required />
-          </div>{phone_html}
-          <div class="form-group">
-            <label for="role">Primary Role</label>
-            <select id="role" name="role">
-              <option value="Engineer">Software Engineer</option>
-              <option value="Founder">Founder / Executive</option>
-              <option value="Designer">Product Designer</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          <button type="submit" id="submit-btn" {disabled_attr}>Join the Waitlist</button>
+{rendered_form_fields}
+          <button type="submit" id="submit-btn" {disabled_attr}>{spec.form_action_label}</button>
         </form>
         <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-      </div>
+      </div>{extra_sections_html}
     </section>
   </main>
   <footer>
-    <p>&copy; 2026 AI Swarm Inc. Verified by TinyFish Browser QA.</p>
+    <p>&copy; 2026 {spec.project_name}. Verified by TinyFish Browser QA.</p>
   </footer>
   <script src="./app.js"></script>
 </body>
@@ -252,95 +281,87 @@ footer {
   border-top: 1px solid var(--border);
 }"""
 
-        app_js = """document.addEventListener('DOMContentLoaded', () => {
+        app_js = f"""document.addEventListener('DOMContentLoaded', () => {{
   const form = document.getElementById('waitlist-form');
   const toast = document.getElementById('toast');
   const submitBtn = document.getElementById('submit-btn');
 
-  form.addEventListener('submit', async (e) => {
+  form.addEventListener('submit', async (e) => {{
     e.preventDefault();
-    const name = document.getElementById('name').value;
-    const email = document.getElementById('email').value;
-    const role = document.getElementById('role').value;
-    const phoneEl = document.getElementById('phone');
-    const countryEl = document.getElementById('country-code');
-    const phone = phoneEl ? phoneEl.value : null;
-    const countryCode = countryEl ? countryEl.value : null;
-
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
 
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+
     // Support both direct root and preview paths
     const isPreview = window.location.pathname.includes('/preview');
+    const apiRoute = '{spec.api_endpoint}';
     const apiUrl = isPreview
-      ? `${window.location.pathname.replace(/\\/preview.*$/, '')}/preview/api/waitlist`
-      : '/api/waitlist';
+      ? `${{window.location.pathname.replace(/\\/preview.*$/, '')}}/preview${{apiRoute}}`
+      : apiRoute;
 
-    try {
-      const payload = { name, email, role };
-      if (phone) {
-        payload.phone = phone;
-        payload.country_code = countryCode;
-      }
-
-      const res = await fetch(apiUrl, {
+    try {{
+      const res = await fetch(apiUrl, {{
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {{ 'Content-Type': 'application/json' }},
         body: JSON.stringify(payload)
-      });
+      }});
 
-      if (res.status === 201 || res.ok) {
+      if (res.status === 201 || res.ok) {{
         const data = await res.json();
-        toast.textContent = data.message || `Welcome ${name}! You are #${data.queue_position || 42} on the waitlist.`;
+        const displayName = payload.name || 'Friend';
+        toast.textContent = data.message || `Success! Confirmed for {spec.project_name}.`;
         toast.classList.remove('hidden');
         form.reset();
-      } else {
-        toast.textContent = `Error: Server returned status ${res.status}`;
+      }} else {{
+        toast.textContent = `Error: Server returned status ${{res.status}}`;
         toast.classList.remove('hidden');
-      }
-    } catch (err) {
-      toast.textContent = 'Network error submitting waitlist request.';
+      }}
+    }} catch (err) {{
+      toast.textContent = 'Network error processing submission.';
       toast.classList.remove('hidden');
-    } finally {
+    }} finally {{
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Join the Waitlist';
-    }
-  });
-});"""
+      submitBtn.textContent = '{spec.form_action_label}';
+    }}
+  }});
+}});"""
 
         await self.write_deliverable_artifact("index.html", index_html, run_id=run_id)
         await self.write_deliverable_artifact("style.css", style_css, run_id=run_id)
         await self.write_deliverable_artifact("app.js", app_js, run_id=run_id)
 
-    async def _write_backend_project(self, run_id: str = "run-default") -> None:
+    async def _write_backend_project(self, run_id: str = "run-default", spec: Optional[ProjectSpec] = None) -> None:
         """Writes real working FastAPI backend route into workspace/<run_id>/."""
-        api_py = """from typing import Optional
+        spec = spec or self.current_spec or extract_project_spec("waitlist")
+        api_py = f'''from typing import Optional, Any, Dict
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
-app = FastAPI(title="Waitlist API")
+app = FastAPI(title="{spec.project_name} API")
 
-class WaitlistRequest(BaseModel):
-    name: str
-    email: EmailStr
-    role: str
+class SubmissionPayload(BaseModel):
+    name: Optional[str] = "Friend"
+    email: Optional[str] = None
+    role: Optional[str] = None
     phone: Optional[str] = None
     country_code: Optional[str] = None
+    class Config:
+        extra = "allow"
 
+@app.post("{spec.api_endpoint}", status_code=201)
 @app.post("/api/waitlist", status_code=201)
-def submit_waitlist(req: WaitlistRequest):
-    return {
+async def handle_submission(req: Dict[str, Any]):
+    name = req.get("name", "Friend")
+    return {{
         "status": "success",
-        "id": "wl-42",
+        "id": "item-42",
         "queue_position": 42,
-        "message": f"Welcome {req.name}! You are #42 on the waitlist.",
-        "name": req.name,
-        "email": req.email,
-        "role": req.role,
-        "phone": req.phone,
-        "country_code": req.country_code,
-    }
-"""
+        "message": f"Welcome {{name}}! Confirmed for {spec.project_name}.",
+        "data": req,
+    }}
+'''
         await self.write_deliverable_artifact("api/main.py", api_py, run_id=run_id)
 
     async def apply_steer(self, steer_spec: Dict[str, Any], run_id: str = "run-default") -> None:
@@ -350,32 +371,32 @@ def submit_waitlist(req: WaitlistRequest):
             logger.info(f"Worker '{self.name}' incorporating phone field into workspace '{run_id}'")
 
             if self.lane == Lane.FE:
-                await self._write_frontend_project(run_id=run_id, with_bug=False, with_phone=True)
+                await self._write_frontend_project(run_id=run_id, spec=self.current_spec, with_bug=False, with_phone=True)
                 await self.emit_card_upsert(
                     card_id="task-fe-hero",
-                    title="[EDITED] Responsive Waitlist Hero Section",
+                    title="[EDITED] Responsive Hero & Form Section",
                     summary="Updated UI with phone number field and country code selector.",
                     status=CardStatus.DONE,
                     lane=Lane.FE,
                 )
                 await self.emit_feed_message(
                     msg_type=MessageType.CHAT,
-                    content="FE Worker: Added phone input and country code picker to waitlist form in index.html and app.js.",
+                    content="FE Worker: Added phone input and country code picker to form in index.html and app.js.",
                     channel="build",
                     intent="handoff",
                 )
             elif self.lane == Lane.BE:
-                await self._write_backend_project(run_id=run_id)
+                await self._write_backend_project(run_id=run_id, spec=self.current_spec)
                 await self.emit_card_upsert(
                     card_id="task-be-api",
-                    title="[EDITED] FastAPI Waitlist Submission Endpoint",
+                    title="[EDITED] FastAPI Submission Endpoint",
                     summary="Updated schema and route to validate and accept phone & country code.",
                     status=CardStatus.DONE,
                     lane=Lane.BE,
                 )
                 await self.emit_feed_message(
                     msg_type=MessageType.CHAT,
-                    content="BE Worker: Updated WaitlistRequest in api/main.py to accept optional phone and country_code.",
+                    content="BE Worker: Updated backend route in api/main.py to accept optional phone and country_code.",
                     channel="build",
                     intent="handoff",
                 )
@@ -386,7 +407,7 @@ def submit_waitlist(req: WaitlistRequest):
         logger.info(f"Worker '{self.name}' applying fix in workspace for run '{run_id}'")
 
         if self.lane == Lane.FE:
-            await self._write_frontend_project(run_id=run_id, with_bug=False)
+            await self._write_frontend_project(run_id=run_id, spec=self.current_spec, with_bug=False)
             await self.emit_feed_message(
                 msg_type=MessageType.CHAT,
                 content="FE Worker: Resolved issue. Submit button enabled, form event handlers restored. Ready for QA retest.",
@@ -394,17 +415,26 @@ def submit_waitlist(req: WaitlistRequest):
                 intent="handoff",
             )
         elif self.lane == Lane.BE:
-            await self._write_backend_project(run_id=run_id)
+            await self._write_backend_project(run_id=run_id, spec=self.current_spec)
             await self.emit_feed_message(
                 msg_type=MessageType.CHAT,
-                content="BE Worker: Re-verified and updated waitlist route in api/main.py. Ready for QA retest.",
+                content="BE Worker: Re-verified and updated route in api/main.py. Ready for QA retest.",
                 channel="qa",
                 intent="handoff",
             )
 
-    async def execute_task(self, task_id: str, title: str, description: str, run_id: str = "run-default") -> None:
+    async def execute_task(
+        self,
+        task_id: str,
+        title: str,
+        description: str,
+        run_id: str = "run-default",
+        spec: Optional[ProjectSpec] = None,
+    ) -> None:
         """Executes a delegated task with LLM completion and writes real files."""
         self.active_task_id = task_id
+        if spec:
+            self.current_spec = spec
         logger.info(f"Worker '{self.name}' starting task '{title}' [{self.lane.value}] for run '{run_id}'")
 
         await self.emit_card_upsert(
@@ -438,20 +468,21 @@ def submit_waitlist(req: WaitlistRequest):
 
         # Write real files into workspace/<run_id>/
         if self.lane == Lane.BE:
-            contract_snippet = "POST /api/waitlist -> Request: {name: str, email: str, role: str} -> Response: 201 Created {id, queue_position}"
+            endpoint = self.current_spec.api_endpoint if self.current_spec else "/api/waitlist"
+            contract_snippet = f"POST {endpoint} -> Request: dynamic JSON schema -> Response: 201 Created {{status, message, data}}"
             await self.emit_feed_message(
                 msg_type=MessageType.CHAT,
                 content=f"BE Worker -> FE Worker: Locked API endpoint contract: `{contract_snippet}`",
                 channel="build",
                 intent="decision",
-                metadata={"contract": contract_snippet, "topic": "Waitlist API Contract", "agreed_by": ["be_worker", "fe_worker"]},
+                metadata={"contract": contract_snippet, "topic": "API Contract", "agreed_by": ["be_worker", "fe_worker"]},
                 lane=Lane.FE,
             )
-            await self._write_backend_project(run_id=run_id)
+            await self._write_backend_project(run_id=run_id, spec=self.current_spec)
 
         if self.lane == Lane.FE:
             has_bug = self.seeded_bug_active and not self.bug_fixed
-            await self._write_frontend_project(run_id=run_id, with_bug=has_bug)
+            await self._write_frontend_project(run_id=run_id, spec=self.current_spec, with_bug=has_bug)
             if has_bug:
                 logger.info(f"Seeded bug introduced into workspace '{run_id}' by FE Worker (button disabled).")
 

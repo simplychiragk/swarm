@@ -22,6 +22,7 @@ from sidecar.models.contracts import (
     TaskDiffItem,
     PlanDiffEnvelope,
 )
+from sidecar.models.specs import extract_project_spec, ProjectSpec
 from sidecar.llm import complete
 from sidecar.decision import RuleBasedDecisionLayer
 from sidecar.broadcaster import broadcaster
@@ -72,6 +73,13 @@ class QueenAgent(BaseAgent):
         self.worker_messages: Dict[str, List[str]] = {}
         self.pending_steers: List[UserMessage] = []
         self.is_interrupted: bool = False
+        self.current_spec: Optional[ProjectSpec] = None
+
+    def get_current_spec(self) -> ProjectSpec:
+        """Returns the current extracted project specification."""
+        if not self.current_spec:
+            self.current_spec = extract_project_spec("waitlist")
+        return self.current_spec
 
     def record_worker_activity(self, worker_name: str, message_content: str):
         """Update activity timestamp and message history for watchdog."""
@@ -94,6 +102,7 @@ class QueenAgent(BaseAgent):
     async def handle_user_input(self, user_text: str) -> None:
         """Processes user input during discovery interview or steering."""
         self.dialogue_history.append({"role": "user", "content": user_text})
+        self.current_spec = extract_project_spec(user_text, self.dialogue_history)
 
         # Phase 1: Interview loop
         if not self.interview_done:
@@ -136,10 +145,11 @@ class QueenAgent(BaseAgent):
                 msg_type=MessageType.STATUS,
                 content="Queen: Requirements confirmed! Decomposing project into structured execution plan.",
             )
+            spec = self.get_current_spec()
             await self.emit_card_upsert(
                 card_id="card-discovery",
                 title="Discovery & Goal Definition",
-                summary="Specifications confirmed: Landing page with waitlist capture, modern styling, and validated fields.",
+                summary=f"Specifications confirmed: {spec.project_name} ({spec.form_title}) with dynamic schema validation.",
                 status=CardStatus.DONE,
                 lane=Lane.NONE,
             )

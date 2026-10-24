@@ -14,7 +14,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
 
@@ -638,6 +638,26 @@ async def submit_waitlist_endpoint(
         "name": req.name,
         "email": req.email,
         "role": req.role,
+    }
+
+
+@app.post("/runs/{run_id}/api/{api_route:path}", status_code=201)
+@app.post("/runs/{run_id}/preview/api/{api_route:path}", status_code=201)
+@app.post("/api/{api_route:path}", status_code=201)
+async def submit_dynamic_endpoint(
+    api_route: str,
+    payload: Dict[str, Any] = Body(default_factory=dict),
+    run_id: str = "run-default",
+):
+    """Dynamic form submission handler for mentor prompts (e.g. /api/register, /api/contact)."""
+    name = payload.get("name", "Friend")
+    return {
+        "status": "success",
+        "id": f"sub-{uuid.uuid4().hex[:6]}",
+        "queue_position": 42,
+        "message": f"Welcome {name}! Your request to /{api_route} has been confirmed.",
+        "route": api_route,
+        "data": payload,
     }
 
 
