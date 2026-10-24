@@ -1409,77 +1409,68 @@ body {
 
 .bee-flight-svg-overlay {
   position: absolute;
-  inset: -14px;
-  width: calc(100% + 28px);
-  height: calc(100% + 28px);
+  inset: -18px;
+  width: calc(100% + 36px);
+  height: calc(100% + 36px);
   pointer-events: none;
   z-index: 10;
   overflow: visible;
 }
 
-/* Dotted Bee Trail */
 .bee-dotted-trail {
   fill: none;
   stroke: #C57E12;
-  stroke-width: 2.4;
+  stroke-width: 2.2;
   stroke-dasharray: 6 5;
   stroke-linecap: round;
+  stroke-dashoffset: 1400;
+  animation: drawBeeTrail 1.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Trail Mask that reveals dots only as the bee advances, and fades out behind */
-.trail-mask-path {
-  stroke-dasharray: 240 1600;
-  stroke-dashoffset: 1600;
-  animation: sweepTrailMask 3.0s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
-}
-
-@keyframes sweepTrailMask {
+@keyframes drawBeeTrail {
   0% {
-    stroke-dashoffset: 1600;
+    stroke-dashoffset: 1400;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  80% {
+    stroke-dashoffset: 0;
+    opacity: 0.95;
   }
   100% {
-    stroke-dashoffset: -240;
+    stroke-dashoffset: 0;
+    opacity: 0.35;
   }
 }
 
 .bee-trail-sparkle {
   opacity: 0;
   transform: scale(0.3);
-  animation: beeSparklePuff 0.7s ease-out forwards;
+  animation: beeSparklePuff 0.6s ease-out forwards;
 }
 
 @keyframes beeSparklePuff {
   0% { opacity: 0; transform: scale(0.3); }
-  50% { opacity: 1; transform: scale(1.35); }
-  100% { opacity: 0; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.3); }
+  100% { opacity: 0.8; transform: scale(1); }
 }
 
 .flying-worker-bee-container {
-  filter: drop-shadow(0 3px 6px rgba(197, 126, 18, 0.45));
-  animation: beeFlightFade 3.3s ease-out forwards;
-}
-
-@keyframes beeFlightFade {
-  0%, 86% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.65) translateY(-6px);
-  }
+  filter: drop-shadow(0 4px 8px rgba(197, 126, 18, 0.45));
 }
 
 .honey-card-entrance {
   opacity: 0;
-  transform: scale(0.97) translateY(6px);
-  animation: honeyCardEntrance 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform: scale(0.96) translateY(6px);
+  animation: honeyCardEntrance 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes honeyCardEntrance {
   0% {
     opacity: 0;
-    transform: scale(0.97) translateY(6px);
+    transform: scale(0.96) translateY(6px);
   }
   100% {
     opacity: 1;
@@ -1493,7 +1484,7 @@ body {
   gap: 8px;
   opacity: 0;
   transform: translateY(8px);
-  animation: honeyContentFade 0.6s ease-out forwards;
+  animation: honeyContentFade 0.45s ease-out forwards;
 }
 
 @keyframes honeyContentFade {

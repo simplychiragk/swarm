@@ -22,33 +22,33 @@ export const AnimatedHoneyCard: React.FC<AnimatedHoneyCardProps> = ({
   const [animationFinished, setAnimationFinished] = useState(false);
   const isNeedsApproval = card.status === "needs_approval";
 
-  // Relaxed, gentle pacing: stagger by index
-  const staggerDelay = Math.min(index * 0.22, 0.88);
-  const cardAppearDelay = staggerDelay + 1.2;
-  const contentFadeDelay = staggerDelay + 1.7;
+  // Stagger delay based on card index (e.g. 0s, 0.18s, 0.36s)
+  const staggerDelay = Math.min(index * 0.18, 0.9);
+  const cardAppearDelay = staggerDelay + 0.45;
+  const contentFadeDelay = staggerDelay + 0.7;
 
-  // Cleanup flight overlay after flight & fade finishes (~3.5s)
+  // Cleanup flight overlay after animation completes (~1.7s) to free resources
   useEffect(() => {
     const timer = setTimeout(() => {
       setAnimationFinished(true);
-    }, (staggerDelay + 3.6) * 1000);
+    }, (staggerDelay + 1.8) * 1000);
     return () => clearTimeout(timer);
   }, [staggerDelay]);
 
-  // Clean, tight, perimeter path right around the card's rounded border (reduced distance)
-  // Hugs ~10px outside the card's 340x220 bounds with smooth rounded corners
+  // Whimsical looping bee flight path that circles around and behind the card perimeter
   const flightPathD =
-    "M 260 -8 " +
-    "C 295 -8, 344 6, 344 35 " +
-    "L 344 185 " +
-    "C 344 214, 305 226, 270 226 " +
-    "L 70 226 " +
-    "C 35 226, -4 214, -4 185 " +
-    "L -4 35 " +
-    "C -4 6, 35 -8, 70 -8 " +
-    "L 270 -8 " +
-    "C 290 -8, 308 -14, 304 -2 " +
-    "C 300 8, 285 2, 295 0";
+    "M 370 -15 " +
+    "C 350 15, 310 25, 330 65 " +
+    "C 352 105, 375 55, 350 15 " +
+    "C 335 40, 345 110, 355 170 " +
+    "C 365 215, 320 238, 260 234 " +
+    "C 200 230, 160 250, 140 235 " +
+    "C 120 218, 142 202, 165 212 " +
+    "C 185 224, 120 235, 70 230 " +
+    "C 15 225, -12 180, 5 120 " +
+    "C 18 55, -8 18, 25 -5 " +
+    "C 65 -30, 145 -15, 225 -22 " +
+    "C 295 -28, 338 -5, 332 25";
 
   return (
     <div className="animated-card-stage">
@@ -56,68 +56,50 @@ export const AnimatedHoneyCard: React.FC<AnimatedHoneyCardProps> = ({
       {!animationFinished && (
         <svg
           className="bee-flight-svg-overlay"
-          viewBox="-25 -25 390 270"
+          viewBox="-35 -35 425 295"
           preserveAspectRatio="none"
           aria-hidden="true"
         >
           <defs>
-            {/* Dynamic trail mask that reveals dots ONLY behind the bee and fades them out behind */}
-            <mask id={`trail-mask-${card.id}`}>
-              <path
-                d={flightPathD}
-                fill="none"
-                stroke="white"
-                strokeWidth="18"
-                strokeLinecap="round"
-                className="trail-mask-path"
-                style={{
-                  animationDelay: `${staggerDelay}s`,
-                }}
-              />
-            </mask>
-
-            {/* Subtle warm glow for the dotted bee trail */}
+            {/* Subtle glow for the dotted bee trail */}
             <filter id={`trail-glow-${card.id}`} x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="1" stdDeviation="1.2" floodColor="#C57E12" floodOpacity="0.35" />
+              <feDropShadow dx="0" dy="1" stdDeviation="1" floodColor="#C57E12" floodOpacity="0.3" />
             </filter>
           </defs>
 
-          {/* Dotted Bee Trail that ONLY shows as the bee flies and fades behind it */}
+          {/* Dotted Bee Trail that draws in behind the flying bee */}
           <path
             d={flightPathD}
             className="bee-dotted-trail"
-            mask={`url(#trail-mask-${card.id})`}
-            filter={`url(#trail-glow-${card.id})`}
-          />
-
-          {/* Gentle finish sparkle near card corner */}
-          <g
-            className="bee-trail-sparkle"
-            style={{
-              animationDelay: `${staggerDelay + 2.7}s`,
-            }}
-            transform="translate(295, 0)"
-          >
-            <circle cx="0" cy="0" r="2.5" fill="#F4A325" opacity="0.9" />
-            <path d="M-5 0 L5 0 M0 -5 L0 5" stroke="#E59E27" strokeWidth="1" />
-          </g>
-
-          {/* The Flying Worker Bee that roams around the card at a relaxed, gentle pace */}
-          <g
-            className="flying-worker-bee-container"
             style={{
               animationDelay: `${staggerDelay}s`,
             }}
+            filter={`url(#trail-glow-${card.id})`}
+          />
+
+          {/* Sparkle puff where the bee arrives and takes off */}
+          <g
+            className="bee-trail-sparkle"
+            style={{
+              animationDelay: `${contentFadeDelay}s`,
+            }}
+            transform="translate(332, 25)"
           >
+            <circle cx="0" cy="0" r="3" fill="#F4A325" opacity="0.9" />
+            <path d="M-6 0 L6 0 M0 -6 L0 6" stroke="#E59E27" strokeWidth="1.2" />
+          </g>
+
+          {/* The Flying Worker Bee that roams around the card */}
+          <g className="flying-worker-bee-container">
             <animateMotion
               path={flightPathD}
-              dur="3.0s"
+              dur="1.45s"
               rotate="auto"
               fill="freeze"
               begin={`${staggerDelay}s`}
             />
 
-            {/* Bee Graphic */}
+            {/* Render Bee Graphic */}
             <g transform="translate(-16, -14) scale(0.72)">
               {/* Fluttering Wings */}
               <ellipse
@@ -154,8 +136,9 @@ export const AnimatedHoneyCard: React.FC<AnimatedHoneyCardProps> = ({
               <circle cx="25" cy="18" r="4.2" fill="#241F1A" />
               <circle cx="26" cy="17" r="1.1" fill="#FFFFFF" />
 
-              {/* Antennae & Stinger */}
+              {/* Antennae */}
               <path d="M26.5 14C27.5 11 29 10 31 10.5" stroke="#241F1A" strokeWidth="1.2" strokeLinecap="round" />
+              {/* Stinger */}
               <path d="M6 18L3.5 18" stroke="#241F1A" strokeWidth="1.6" strokeLinecap="round" />
             </g>
           </g>
