@@ -165,7 +165,8 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
 
   const showPopover = isHovered || forceOpen;
 
-  const scale = size === "sm" ? 0.65 : size === "lg" ? 1.3 : 1.0;
+  const isSm = size === "sm";
+  const scale = isSm ? 0.28 : size === "lg" ? 1.3 : 1.0;
 
   // Clamping progress
   const safeProgress = Math.min(100, Math.max(0, progress));
@@ -203,76 +204,91 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
       <div
         className="beehive-stage"
         style={{
-          width: `${240 * scale}px`,
-          height: `${200 * scale}px`,
+          width: isSm ? "42px" : `${240 * scale}px`,
+          height: isSm ? "38px" : `${200 * scale}px`,
         }}
       >
         {/* Left Bee */}
-        <div
-          className={`mascot-bee bee-left ${safeProgress > 0 ? "bee-active" : ""}`}
-          style={{
-            position: "absolute",
-            left: `${15 * scale}px`,
-            top: `${100 * scale}px`,
-            transform: `scale(${scale})`,
-          }}
-          title="Worker Bee • Building hive"
-        >
-          <svg width="34" height="30" viewBox="0 0 34 30" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Wing 1 */}
-            <ellipse
-              cx="13"
-              cy="7"
-              rx="6"
-              ry="4"
-              transform="rotate(-25 13 7)"
-              fill="#FFFFFF"
-              fillOpacity="0.85"
-              stroke="#2E2822"
-              strokeWidth="1.2"
-              className="bee-wing-flutter"
-            />
-            {/* Wing 2 */}
-            <ellipse
-              cx="19"
-              cy="6"
-              rx="6"
-              ry="4"
-              transform="rotate(-5 19 6)"
-              fill="#FFFFFF"
-              fillOpacity="0.7"
-              stroke="#2E2822"
-              strokeWidth="1.2"
-              className="bee-wing-flutter-delayed"
-            />
-            {/* Body */}
-            <ellipse cx="16" cy="18" rx="10" ry="7" fill="#F4A325" stroke="#221E19" strokeWidth="1.6" />
-            {/* Stripes */}
-            <rect x="12" y="11.5" width="3.2" height="13" rx="1.6" fill="#241F1A" />
-            <rect x="18" y="11.5" width="3.2" height="13" rx="1.6" fill="#241F1A" />
-            {/* Head */}
-            <circle cx="25" cy="18" r="4.2" fill="#241F1A" />
-            <circle cx="26" cy="17" r="1" fill="#FFFFFF" />
-            {/* Antennae */}
-            <path d="M26.5 14C27.5 11 29 10 31 10.5" stroke="#241F1A" strokeWidth="1.2" strokeLinecap="round" />
-            {/* Stinger */}
-            <path d="M6 18L3.5 18" stroke="#241F1A" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
-        </div>
+        {!isSm && (
+          <div
+            className={`mascot-bee bee-left ${safeProgress > 0 ? "bee-active" : ""}`}
+            style={{
+              position: "absolute",
+              left: `${15 * scale}px`,
+              top: `${100 * scale}px`,
+              transform: `scale(${scale})`,
+            }}
+            title="Worker Bee • Building hive"
+          >
+            <svg width="34" height="30" viewBox="0 0 34 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* Wing 1 */}
+              <ellipse
+                cx="13"
+                cy="7"
+                rx="6"
+                ry="4"
+                transform="rotate(-25 13 7)"
+                fill="#FFFFFF"
+                fillOpacity="0.85"
+                stroke="#2E2822"
+                strokeWidth="1.2"
+                className="bee-wing-flutter"
+              />
+              {/* Wing 2 */}
+              <ellipse
+                cx="19"
+                cy="6"
+                rx="6"
+                ry="4"
+                transform="rotate(-5 19 6)"
+                fill="#FFFFFF"
+                fillOpacity="0.7"
+                stroke="#2E2822"
+                strokeWidth="1.2"
+                className="bee-wing-flutter-delayed"
+              />
+              {/* Body */}
+              <ellipse cx="16" cy="18" rx="10" ry="7" fill="#F4A325" stroke="#221E19" strokeWidth="1.6" />
+              {/* Stripes */}
+              <rect x="12" y="11.5" width="3.2" height="13" rx="1.6" fill="#241F1A" />
+              <rect x="18" y="11.5" width="3.2" height="13" rx="1.6" fill="#241F1A" />
+              {/* Head */}
+              <circle cx="25" cy="18" r="4.2" fill="#241F1A" />
+              <circle cx="26" cy="17" r="1" fill="#FFFFFF" />
+              {/* Antennae */}
+              <path d="M26.5 14C27.5 11 29 10 31 10.5" stroke="#241F1A" strokeWidth="1.2" strokeLinecap="round" />
+              {/* Stinger */}
+              <path d="M6 18L3.5 18" stroke="#241F1A" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </div>
+        )}
 
         {/* Central Beehive */}
         <div
           className={`mascot-hive ${safeProgress === 100 ? "hive-full-pulse" : ""}`}
           style={{
-            transform: `scale(${scale})`,
+            transform: isSm ? "none" : `scale(${scale})`,
             filter: safeProgress > 0
-              ? "drop-shadow(0 6px 18px rgba(229, 161, 45, 0.35))"
-              : "drop-shadow(0 4px 10px rgba(180, 160, 130, 0.2))",
+              ? isSm
+                ? "drop-shadow(0 2px 6px rgba(229, 161, 45, 0.4))"
+                : "drop-shadow(0 6px 18px rgba(229, 161, 45, 0.35))"
+              : isSm
+                ? "drop-shadow(0 2px 4px rgba(180, 160, 130, 0.2))"
+                : "drop-shadow(0 4px 10px rgba(180, 160, 130, 0.2))",
             cursor: "pointer",
+            display: isSm ? "flex" : undefined,
+            alignItems: isSm ? "center" : undefined,
+            justifyContent: isSm ? "center" : undefined,
           }}
           onClick={() => setIsHovered((prev) => !prev)}
         >
-          <svg width="150" height="136" viewBox="0 0 150 136" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg
+            width={isSm ? "42" : "150"}
+            height={isSm ? "38" : "136"}
+            viewBox="0 0 150 136"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
             <defs>
               <linearGradient id={`honeyGrad-${id}`} x1="75" y1="10" x2="75" y2="126" gradientUnits="userSpaceOnUse">
                 <stop offset="0%" stopColor="#FFC84B" />
@@ -374,75 +390,79 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
         </div>
 
         {/* Right Bee */}
-        <div
-          className={`mascot-bee bee-right ${safeProgress > 0 ? "bee-active" : ""}`}
-          style={{
-            position: "absolute",
-            right: `${15 * scale}px`,
-            top: `${42 * scale}px`,
-            transform: `scale(${scale})`,
-          }}
-          title="QA / Research Bee • Checking nectar"
-        >
-          <svg width="34" height="30" viewBox="0 0 34 30" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Wing 1 */}
-            <ellipse
-              cx="19"
-              cy="7"
-              rx="6"
-              ry="4"
-              transform="rotate(25 19 7)"
-              fill="#FFFFFF"
-              fillOpacity="0.85"
-              stroke="#2E2822"
-              strokeWidth="1.2"
-              className="bee-wing-flutter"
-            />
-            {/* Wing 2 */}
-            <ellipse
-              cx="13"
-              cy="6"
-              rx="6"
-              ry="4"
-              transform="rotate(5 13 6)"
-              fill="#FFFFFF"
-              fillOpacity="0.7"
-              stroke="#2E2822"
-              strokeWidth="1.2"
-              className="bee-wing-flutter-delayed"
-            />
-            {/* Body */}
-            <ellipse cx="16" cy="18" rx="10" ry="7" fill="#F4A325" stroke="#221E19" strokeWidth="1.6" />
-            {/* Stripes */}
-            <rect x="13" y="11.5" width="3.2" height="13" rx="1.6" fill="#241F1A" />
-            <rect x="19" y="11.5" width="3.2" height="13" rx="1.6" fill="#241F1A" />
-            {/* Head (facing left) */}
-            <circle cx="7" cy="18" r="4.2" fill="#241F1A" />
-            <circle cx="6" cy="17" r="1" fill="#FFFFFF" />
-            {/* Antennae */}
-            <path d="M6 14C5 11 3.5 10 1.5 10.5" stroke="#241F1A" strokeWidth="1.2" strokeLinecap="round" />
-            {/* Stinger */}
-            <path d="M26 18L28.5 18" stroke="#241F1A" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
-        </div>
+        {!isSm && (
+          <div
+            className={`mascot-bee bee-right ${safeProgress > 0 ? "bee-active" : ""}`}
+            style={{
+              position: "absolute",
+              right: `${15 * scale}px`,
+              top: `${42 * scale}px`,
+              transform: `scale(${scale})`,
+            }}
+            title="QA / Research Bee • Checking nectar"
+          >
+            <svg width="34" height="30" viewBox="0 0 34 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* Wing 1 */}
+              <ellipse
+                cx="19"
+                cy="7"
+                rx="6"
+                ry="4"
+                transform="rotate(25 19 7)"
+                fill="#FFFFFF"
+                fillOpacity="0.85"
+                stroke="#2E2822"
+                strokeWidth="1.2"
+                className="bee-wing-flutter"
+              />
+              {/* Wing 2 */}
+              <ellipse
+                cx="13"
+                cy="6"
+                rx="6"
+                ry="4"
+                transform="rotate(5 13 6)"
+                fill="#FFFFFF"
+                fillOpacity="0.7"
+                stroke="#2E2822"
+                strokeWidth="1.2"
+                className="bee-wing-flutter-delayed"
+              />
+              {/* Body */}
+              <ellipse cx="16" cy="18" rx="10" ry="7" fill="#F4A325" stroke="#221E19" strokeWidth="1.6" />
+              {/* Stripes */}
+              <rect x="13" y="11.5" width="3.2" height="13" rx="1.6" fill="#241F1A" />
+              <rect x="19" y="11.5" width="3.2" height="13" rx="1.6" fill="#241F1A" />
+              {/* Head (facing left) */}
+              <circle cx="7" cy="18" r="4.2" fill="#241F1A" />
+              <circle cx="6" cy="17" r="1" fill="#FFFFFF" />
+              {/* Antennae */}
+              <path d="M6 14C5 11 3.5 10 1.5 10.5" stroke="#241F1A" strokeWidth="1.2" strokeLinecap="round" />
+              {/* Stinger */}
+              <path d="M26 18L28.5 18" stroke="#241F1A" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </div>
+        )}
       </div>
 
-      {/* Progress pill badge */}
-      <div
-        className="hive-progress-pill-badge"
-        onClick={() => setIsHovered((prev) => !prev)}
-        title="Click or hover to view task checklist"
-      >
-        <span className="badge-honey-icon">{safeProgress > 0 ? "🍯" : "🫙"}</span>
-        <span className="badge-honey-pct">{safeProgress}% Honey</span>
-        <span className="badge-honey-sub">
-          {safeProgress === 0
-            ? "Empty • Hover for checklist"
-            : safeProgress === 100
-            ? "Hive Complete! ✨"
-            : `${completedCount}/${totalCount} Done • Hover`}
-        </span>
-      </div>
+      {/* Progress pill badge - only on md and lg sizes */}
+      {!isSm && (
+        <div
+          className="hive-progress-pill-badge"
+          onClick={() => setIsHovered((prev) => !prev)}
+          title="Click or hover to view task checklist"
+        >
+          <span className="badge-honey-icon">{safeProgress > 0 ? "🍯" : "🫙"}</span>
+          <span className="badge-honey-pct">{safeProgress}% Honey</span>
+          <span className="badge-honey-sub">
+            {safeProgress === 0
+              ? "Empty • Hover for checklist"
+              : safeProgress === 100
+              ? "Hive Complete! ✨"
+              : `${completedCount}/${totalCount} Done • Hover`}
+          </span>
+        </div>
+      )}
 
       {/* Hover Checklist Popover */}
       {showPopover && (
