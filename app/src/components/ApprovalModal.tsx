@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { ApprovalRequest } from "../types/contracts";
-import { ShieldCheck, AlertCircle, ArrowRight, CornerDownLeft, Sparkles } from "lucide-react";
+import { ShieldCheck, AlertCircle, ArrowRight, CornerDownLeft, Sparkles, Loader2 } from "lucide-react";
 
 interface ApprovalModalProps {
   approval: ApprovalRequest | null;
@@ -15,10 +15,19 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
 }) => {
   const [redirectNote, setRedirectNote] = useState("");
   const [showNoteField, setShowNoteField] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    setIsSubmitting(false);
+    setShowNoteField(false);
+    setRedirectNote("");
+  }, [approval?.id]);
 
   if (!approval) return null;
 
   const handleApprove = () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     onDecision("approve", "Approved by user");
   };
 
@@ -27,6 +36,8 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
       setShowNoteField(true);
       return;
     }
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     onDecision("redirect", redirectNote.trim() || "Revision requested by user");
   };
 
@@ -116,15 +127,21 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
             type="button"
             className="retro-btn retro-btn-approve"
             onClick={handleApprove}
+            disabled={isSubmitting}
           >
-            <ShieldCheck size={16} />
-            <span>Approve & Deploy Live</span>
+            {isSubmitting ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <ShieldCheck size={16} />
+            )}
+            <span>{isSubmitting ? "Deploying Live..." : "Approve & Deploy Live"}</span>
           </button>
 
           <button
             type="button"
             className="retro-btn retro-btn-redirect"
             onClick={handleRedirect}
+            disabled={isSubmitting}
           >
             {showNoteField ? (
               <>

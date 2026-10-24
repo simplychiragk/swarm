@@ -16,17 +16,37 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const isIntentionalCloseRef = useRef<boolean>(false);
+  const resolvedApprovalsRef = useRef<Set<string>>(new Set());
+  const cardsRef = useRef<Record<string, WhiteboardCard>>({});
+
+  // Keep cardsRef synchronized with cards state for synchronous checks
+  useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
 
   const connect = useCallback(() => {
+    // If socket is already open or currently connecting, do not re-initialize
+    if (
+      socketRef.current &&
+      (socketRef.current.readyState === WebSocket.OPEN ||
+        socketRef.current.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
+
     if (socketRef.current) {
       try {
+        isIntentionalCloseRef.current = true;
         socketRef.current.close();
       } catch {
         // ignore
       }
     }
 
+    isIntentionalCloseRef.current = false;
     setStatus("connecting");
+
     try {
       const ws = new WebSocket(url);
 
@@ -37,15 +57,45 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
       ws.onmessage = (event) => {
         try {
           const envelope = JSON.parse(event.data) as EventEnvelope;
+
           if (envelope.event === "feed_message") {
             setMessages((prev) => [...prev, envelope.payload]);
           } else if (envelope.event === "card_upsert") {
+            const card = envelope.payload;
             setCards((prev) => ({
               ...prev,
-              [envelope.payload.id]: envelope.payload,
+              [card.id]: card,
             }));
+
+            // If the card is finalized (done or failed), permanently dismiss any active approval for it
+            if (card.status === "done" || card.status === "failed") {
+              resolvedApprovalsRef.current.add(card.id);
+              setActiveApproval((current) => {
+                if (current && current.card_id === card.id) {
+                  return null;
+                }
+                return current;
+              });
+            }
           } else if (envelope.event === "approval_request") {
-            setActiveApproval(envelope.payload);
+            const req = envelope.payload;
+
+            // Check if this approval was already decided or its card is already completed
+            const isAlreadyResolved =
+              resolvedApprovalsRef.current.has(req.id) ||
+              resolvedApprovalsRef.current.has(req.card_id);
+
+            const existingCard = cardsRef.current[req.card_id];
+            const isCardDone =
+              existingCard &&
+              (existingCard.status === "done" || existingCard.status === "failed");
+
+            if (isAlreadyResolved || isCardDone) {
+              // Discard duplicate or already resolved approval request
+              return;
+            }
+
+            setActiveApproval(req);
           }
         } catch (err) {
           console.error("Failed to parse WebSocket event:", err);
@@ -54,11 +104,13 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
 
       ws.onclose = () => {
         setStatus("disconnected");
-        // Attempt reconnect after 3 seconds if disconnected
-        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = window.setTimeout(() => {
-          connect();
-        }, 3000);
+        // Only attempt automatic reconnect if this wasn't an intentional cleanup
+        if (!isIntentionalCloseRef.current) {
+          if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            connect();
+          }, 4000);
+        }
       };
 
       ws.onerror = () => {
@@ -75,6 +127,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
   useEffect(() => {
     connect();
     return () => {
+      isIntentionalCloseRef.current = true;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (socketRef.current) {
         socketRef.current.close();
@@ -118,9 +171,16 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     (decision: "approve" | "redirect", note?: string) => {
       if (!activeApproval) return;
 
+      const approvalId = activeApproval.id;
+      const cardId = activeApproval.card_id;
+
+      // Lock this approval immediately so it can NEVER re-trigger
+      resolvedApprovalsRef.current.add(approvalId);
+      resolvedApprovalsRef.current.add(cardId);
+
       const payload = {
-        approval_id: activeApproval.id,
-        card_id: activeApproval.card_id,
+        approval_id: approvalId,
+        card_id: cardId,
         decision,
         note: note || (decision === "approve" ? "Approved by user" : "Redirected by user"),
       };
@@ -134,23 +194,28 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
         );
       }
 
-      // Optimistically update card status locally
+      // Optimistically update card status locally to final state
       setCards((prev) => {
-        const target = prev[activeApproval.card_id];
-        if (!target) return prev;
+        const target = prev[cardId];
         return {
           ...prev,
-          [activeApproval.card_id]: {
-            ...target,
+          [cardId]: {
+            ...(target || {
+              id: cardId,
+              title: "Production Release Gate",
+              lane: "Ops",
+              updated_at: new Date().toISOString(),
+            }),
             status: decision === "approve" ? "done" : "failed",
             summary:
               decision === "approve"
-                ? "Production release authorized by user. Live."
+                ? "Production release authorized by user. Application deployed live."
                 : `Release redirected: ${payload.note}`,
           },
         };
       });
 
+      // Clear the active approval dialog immediately
       setActiveApproval(null);
     },
     [activeApproval]
@@ -170,6 +235,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     } catch (e) {
       console.error("Reset error:", e);
     }
+    resolvedApprovalsRef.current.clear();
     setMessages([]);
     setCards({});
     setActiveApproval(null);
