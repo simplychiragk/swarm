@@ -21,6 +21,9 @@ import {
   Plus,
   RefreshCw,
   FolderPlus,
+  FolderUp,
+  ExternalLink,
+  HardDrive,
   FileCode,
   FileText,
   Check,
@@ -67,6 +70,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [selectedFilePath, setSelectedFilePath] = useState<string>("frontend/src/index.html");
   const [sidebarToast, setSidebarToast] = useState<string | null>(null);
 
+  // Desktop folder opening & popover state
+  const [showFolderMenu, setShowFolderMenu] = useState(false);
+  const [openedFolderName, setOpenedFolderName] = useState<string | null>(null);
+  const folderMenuRef = useRef<HTMLDivElement | null>(null);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
+
   const feedBottomRef = useRef<HTMLDivElement | null>(null);
   const newFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -84,6 +93,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [isCreatingFile, isCreatingFolder]);
 
+  // Close folder menu on click outside or Escape
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        folderMenuRef.current &&
+        !folderMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowFolderMenu(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showFolderMenu) {
+        setShowFolderMenu(false);
+      }
+    };
+    if (showFolderMenu) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showFolderMenu]);
+
   const showToast = (msg: string) => {
     setSidebarToast(msg);
     setTimeout(() => {
@@ -96,6 +130,224 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ...prev,
       [folderKey]: !prev[folderKey],
     }));
+  };
+
+  // Open existing folder on Desktop using native browser directory picker or fallback
+  const handleBrowseDesktopFolder = async () => {
+    setShowFolderMenu(false);
+
+    if ("showDirectoryPicker" in window) {
+      try {
+        // @ts-expect-error - Chromium / WebView2 File System Access API
+        const dirHandle = await window.showDirectoryPicker({
+          id: "swarm-desktop-picker",
+          startIn: "desktop",
+        });
+
+        const rootName = dirHandle.name;
+        const newFiles: Record<string, ProjectFile> = {};
+        let count = 0;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const readEntries = async (handle: any, currentPath: string) => {
+          if (count >= 150) return;
+          for await (const entry of handle.values()) {
+            if (count >= 150) break;
+            const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+            if (entry.kind === "file") {
+              if (
+                entry.name.startsWith(".") ||
+                /\.(png|jpg|jpeg|ico|gif|exe|dll|zip|tar|gz|woff|woff2)$/i.test(entry.name)
+              ) {
+                continue;
+              }
+              try {
+                const file = await entry.getFile();
+                if (file.size <= 500 * 1024) {
+                  const text = await file.text();
+                  const ext = entry.name.split(".").pop()?.toLowerCase() || "";
+                  let lang = "text";
+                  if (ext === "ts" || ext === "tsx") lang = "typescript";
+                  else if (ext === "js" || ext === "jsx") lang = "javascript";
+                  else if (ext === "json") lang = "json";
+                  else if (ext === "html") lang = "html";
+                  else if (ext === "css") lang = "css";
+                  else if (ext === "md") lang = "markdown";
+                  else if (ext === "py") lang = "python";
+                  else if (ext === "rs") lang = "rust";
+
+                  newFiles[entry.name] = {
+                    name: entry.name,
+                    path: entryPath,
+                    language: lang,
+                    content: text,
+                  };
+                  count++;
+                }
+              } catch {
+                // Ignore unreadable file
+              }
+            } else if (entry.kind === "directory") {
+              if (
+                entry.name !== "node_modules" &&
+                entry.name !== ".git" &&
+                entry.name !== "dist" &&
+                entry.name !== "build" &&
+                !entry.name.startsWith(".")
+              ) {
+                await readEntries(entry, entryPath);
+              }
+            }
+          }
+        };
+
+        await readEntries(dirHandle, rootName);
+
+        if (count > 0) {
+          setFilesMap((prev) => ({ ...prev, ...newFiles }));
+          setOpenedFolderName(rootName);
+          setActiveTab("files");
+          setExpandedFolders((prev) => ({ ...prev, [rootName]: true, project: true }));
+          showToast(`Opened folder "${rootName}" (${count} files)`);
+          return;
+        }
+      } catch (err: unknown) {
+        if ((err as Error)?.name === "AbortError") {
+          return;
+        }
+        console.warn("Directory picker error, falling back to input:", err);
+      }
+    }
+
+    // Fallback: trigger HTML5 directory picker
+    folderInputRef.current?.click();
+  };
+
+  // HTML5 folder selection change handler
+  const handleFolderInputSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    const newFiles: Record<string, ProjectFile> = {};
+    let rootDirName = "Desktop Project";
+
+    const firstPath = fileList[0].webkitRelativePath || "";
+    if (firstPath) {
+      const parts = firstPath.split("/");
+      if (parts.length > 0 && parts[0]) {
+        rootDirName = parts[0];
+      }
+    }
+
+    let count = 0;
+    for (let i = 0; i < fileList.length && count < 150; i++) {
+      const file = fileList[i];
+      if (file.size > 500 * 1024) continue;
+      if (file.webkitRelativePath.includes("/.git/")) continue;
+      if (file.webkitRelativePath.includes("/node_modules/")) continue;
+      if (file.webkitRelativePath.includes("/dist/")) continue;
+      if (/\.(png|jpg|jpeg|gif|ico|webp|exe|dll|zip|tar|gz|woff|woff2)$/i.test(file.name)) continue;
+
+      try {
+        const text = await file.text();
+        const ext = file.name.split(".").pop()?.toLowerCase() || "";
+        let lang = "text";
+        if (ext === "ts" || ext === "tsx") lang = "typescript";
+        else if (ext === "js" || ext === "jsx") lang = "javascript";
+        else if (ext === "json") lang = "json";
+        else if (ext === "html") lang = "html";
+        else if (ext === "css") lang = "css";
+        else if (ext === "md") lang = "markdown";
+        else if (ext === "py") lang = "python";
+        else if (ext === "rs") lang = "rust";
+        else if (ext === "toml") lang = "toml";
+
+        newFiles[file.name] = {
+          name: file.name,
+          path: file.webkitRelativePath || file.name,
+          language: lang,
+          content: text,
+        };
+        count++;
+      } catch (err) {
+        console.warn("Could not read file:", file.name, err);
+      }
+    }
+
+    if (count > 0) {
+      setFilesMap((prev) => ({ ...prev, ...newFiles }));
+      setOpenedFolderName(rootDirName);
+      setActiveTab("files");
+      setExpandedFolders((prev) => ({ ...prev, [rootDirName]: true, project: true }));
+      showToast(`Opened folder "${rootDirName}" (${count} files)`);
+    } else {
+      showToast(`Opened folder "${rootDirName}"`);
+    }
+
+    e.target.value = "";
+    setShowFolderMenu(false);
+  };
+
+  // Open Desktop directory in Windows File Explorer via Tauri opener
+  const handleOpenInSystemExplorer = async () => {
+    setShowFolderMenu(false);
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+    if (isTauri) {
+      try {
+        const { desktopDir } = await import("@tauri-apps/api/path");
+        const { openPath } = await import("@tauri-apps/plugin-opener");
+        const dDir = await desktopDir();
+        await openPath(dDir);
+        showToast("Opened Desktop in Windows File Explorer");
+        return;
+      } catch (err) {
+        console.error("Tauri openPath failed:", err);
+        showToast("Error opening Desktop folder");
+        return;
+      }
+    }
+
+    // Fallback if running outside Tauri
+    showToast("Opening folder picker (Desktop app opens File Explorer)");
+    handleBrowseDesktopFolder();
+  };
+
+  // Load local Swarm workspace files directly
+  const handleOpenWorkspaceFolder = () => {
+    setShowFolderMenu(false);
+    const workspaceFiles: Record<string, ProjectFile> = {
+      "runner.py": {
+        name: "runner.py",
+        path: "swarm/sidecar/runner.py",
+        language: "python",
+        content: `# Mock swarm runner for sidecar\nimport asyncio\nfrom typing import Dict, Any\n\nclass SwarmRunner:\n    def __init__(self):\n        self.running = False\n        self.step = 0\n\n    async def start(self):\n        self.running = True\n        print("[Swarm] Agent loop started.")\n`,
+      },
+      "server.py": {
+        name: "server.py",
+        path: "swarm/sidecar/server.py",
+        language: "python",
+        content: `# FastAPI / WebSocket sidecar server\nimport uvicorn\nfrom fastapi import FastAPI, WebSocket\n\napp = FastAPI(title="Swarm Sidecar")\n\n@app.websocket("/ws")\nasync def websocket_endpoint(websocket: WebSocket):\n    await websocket.accept()\n    print("Client connected to Swarm WebSocket")\n`,
+      },
+      "App.tsx": {
+        name: "App.tsx",
+        path: "swarm/app/src/App.tsx",
+        language: "typescript",
+        content: `// Root application layout uniting Nectar Feed + Honeycomb Whiteboard\nimport React, { useState } from "react";\nimport { Sidebar } from "./components/Sidebar";\nimport { HoneycombWhiteboard } from "./components/HoneycombWhiteboard";\n\nexport default function App() {\n  return <main className="swarm-app">...</main>;\n}\n`,
+      },
+      "contracts.ts": {
+        name: "contracts.ts",
+        path: "swarm/app/src/types/contracts.ts",
+        language: "typescript",
+        content: `// WebSocket Contracts: Single Source of Truth\nexport type AgentSender = "queen" | "worker" | "scribe" | "qa";\n\nexport interface FeedMessage {\n  id: string;\n  sender: AgentSender;\n  lane?: string;\n  content: string;\n  timestamp: number;\n}\n`,
+      },
+    };
+
+    setFilesMap((prev) => ({ ...prev, ...workspaceFiles }));
+    setOpenedFolderName("swarm");
+    setActiveTab("files");
+    setExpandedFolders((prev) => ({ ...prev, swarm: true, project: true }));
+    showToast("Loaded Swarm Workspace files");
   };
 
   const handleSubmitMessage = (e: React.FormEvent) => {
@@ -618,6 +870,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Tree Items */}
             {expandedFolders.project && (
               <div className="tree-items-list">
+                {/* Opened Desktop Folder if present */}
+                {openedFolderName && (
+                  <div className="opened-desktop-folder-box">
+                    <div
+                      className="tree-item folder-item selected-folder-pill indent-0"
+                      onClick={() => toggleFolder(openedFolderName)}
+                    >
+                      <div className="tree-item-left">
+                        {expandedFolders[openedFolderName] !== false ? (
+                          <ChevronDown size={13} className="tree-chevron" />
+                        ) : (
+                          <ChevronRight size={13} className="tree-chevron" />
+                        )}
+                        <FolderOpen size={14} className="folder-icon text-amber-800" />
+                        <span className="item-name font-bold text-amber-950">
+                          {openedFolderName}
+                        </span>
+                      </div>
+                      <span className="opened-folder-badge">DESKTOP</span>
+                    </div>
+
+                    {expandedFolders[openedFolderName] !== false && (
+                      <div className="opened-folder-files-list">
+                        {Object.values(filesMap)
+                          .filter(
+                            (f) =>
+                              f.path.startsWith(openedFolderName + "/") ||
+                              f.path.startsWith("swarm/") ||
+                              !f.path.startsWith("frontend/")
+                          )
+                          .map((file) => {
+                            const isSelected = selectedFilePath === file.path;
+                            return (
+                              <div
+                                key={file.path}
+                                className={`tree-item file-item indent-1 ${
+                                  isSelected ? "selected-file-pill" : ""
+                                }`}
+                                onClick={() => handleSelectFile(file.name)}
+                                title={`Click to preview code: ${file.name}`}
+                              >
+                                <div className="tree-item-left">
+                                  <FileText size={13} className="text-amber-800" />
+                                  <span className="item-name">{file.name}</span>
+                                </div>
+                                {isSelected && (
+                                  <span className="file-view-indicator">View</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* frontend folder with green dot */}
                 <div
                   className="tree-item folder-item"
@@ -871,15 +1178,107 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* Bottom Profile Bar (Exact match to design screenshot) */}
+      {/* Bottom Profile Bar (Exact match to design screenshot with Desktop Folder opener) */}
       <div className="sidebar-bottom-bar">
-        <div className="user-profile-pill">
-          <div className="user-avatar-circle">
-            <span role="img" aria-label="avatar">
-              🧑‍💻
-            </span>
+        <div className="sidebar-bottom-left-group">
+          <div className="user-profile-pill">
+            <div className="user-avatar-circle">
+              <span role="img" aria-label="avatar">
+                🧑‍💻
+              </span>
+            </div>
+            <span className="user-profile-name">User1</span>
           </div>
-          <span className="user-profile-name">User1</span>
+
+          {/* Icon next to User1 that opens an already existing folder on our desktop */}
+          <div className="sidebar-folder-btn-wrapper" ref={folderMenuRef}>
+            <button
+              type="button"
+              className={`sidebar-folder-btn ${showFolderMenu ? "active" : ""}`}
+              onClick={() => setShowFolderMenu((prev) => !prev)}
+              title="Open already existing folder on Desktop"
+              aria-label="Open already existing folder on Desktop"
+            >
+              <FolderOpen size={16} />
+            </button>
+
+            {/* Folder Actions Popover */}
+            {showFolderMenu && (
+              <div
+                className="desktop-folder-popover"
+                role="dialog"
+                aria-label="Open desktop folder menu"
+              >
+                <div className="popover-header">
+                  <span className="popover-header-title">
+                    <FolderOpen size={13} />
+                    <span>Desktop Folders</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="popover-close-btn"
+                    onClick={() => setShowFolderMenu(false)}
+                    title="Close"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+
+                <div className="popover-options-list">
+                  <button
+                    type="button"
+                    className="popover-option-btn primary-option"
+                    onClick={handleBrowseDesktopFolder}
+                    title="Select an existing folder from your Desktop to open into Swarm"
+                  >
+                    <div className="popover-option-icon">
+                      <FolderUp size={16} />
+                    </div>
+                    <div className="popover-option-text">
+                      <span className="popover-option-label">Open Folder from Desktop...</span>
+                      <span className="popover-option-desc">
+                        Select an existing folder from Desktop to view and edit in Swarm
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="popover-option-btn"
+                    onClick={handleOpenInSystemExplorer}
+                    title="Open Desktop in Windows File Explorer"
+                  >
+                    <div className="popover-option-icon">
+                      <ExternalLink size={16} />
+                    </div>
+                    <div className="popover-option-text">
+                      <span className="popover-option-label">Open in File Explorer</span>
+                      <span className="popover-option-desc">
+                        Launch Windows Explorer at Desktop / Project directory
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="popover-option-btn"
+                    onClick={handleOpenWorkspaceFolder}
+                    title="Open current workspace directory in Swarm"
+                  >
+                    <div className="popover-option-icon">
+                      <HardDrive size={16} />
+                    </div>
+                    <div className="popover-option-text">
+                      <span className="popover-option-label">Load Swarm Workspace</span>
+                      <span className="popover-option-desc">
+                        Load existing files from desktop project workspace
+                      </span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <button
@@ -894,6 +1293,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Search size={16} />
         </button>
       </div>
+
+      {/* Hidden file/folder input for desktop folder picker */}
+      <input
+        type="file"
+        ref={folderInputRef}
+        {...({ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>)}
+        multiple
+        style={{ display: "none" }}
+        onChange={handleFolderInputSelected}
+      />
     </aside>
   );
 };
