@@ -105,6 +105,7 @@ export function App() {
       {/* Contract #3: Approval Modal */}
       <ApprovalModal
         approval={activeApproval}
+        cards={cards}
         onDecision={(decision, note, scope) => sendApprovalDecision(decision, note, scope)}
         onClose={() => setActiveApproval(null)}
       />
