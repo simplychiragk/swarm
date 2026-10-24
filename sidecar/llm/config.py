@@ -31,20 +31,20 @@ class ProviderConfig:
 PROVIDER_CHAIN: List[ProviderConfig] = [
     ProviderConfig(
         name="nvidia",
-        base_url="https://integrate.api.nvidia.com/v1",
+        base_url=os.environ.get("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1"),
         api_key_env="NVIDIA_NIM_API_KEY",
         models_by_tier={
-            "fast": "meta/llama-3.1-8b-instruct",
-            "smart": "meta/llama-3.3-70b-instruct",
+            "fast": os.environ.get("NVIDIA_MODEL_FAST", "meta/llama-3.1-8b-instruct"),
+            "smart": os.environ.get("NVIDIA_MODEL_SMART", "meta/llama-3.3-70b-instruct"),
         },
     ),
     ProviderConfig(
         name="openrouter",
-        base_url="https://openrouter.ai/api/v1",
+        base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         api_key_env="OPENROUTER_API_KEY",
         models_by_tier={
-            "fast": "meta-llama/llama-3.3-70b-instruct:free",
-            "smart": "meta-llama/llama-3.3-70b-instruct:free",
+            "fast": os.environ.get("OPENROUTER_MODEL_FAST", "meta-llama/llama-3.3-70b-instruct:free"),
+            "smart": os.environ.get("OPENROUTER_MODEL_SMART", "meta-llama/llama-3.3-70b-instruct:free"),
         },
         extra_headers={
             "HTTP-Referer": "https://github.com/simplychiragk/swarm",
@@ -71,3 +71,25 @@ def get_llm_mode() -> str:
 def get_available_providers() -> List[ProviderConfig]:
     """Returns providers from the fallback chain that have API keys present in the environment."""
     return [p for p in PROVIDER_CHAIN if p.is_configured()]
+
+
+def validate_startup_config() -> List[str]:
+    """
+    Validates LLM configuration at startup and returns user-friendly advisory messages.
+    """
+    mode = get_llm_mode()
+    warnings = []
+    if mode == "live":
+        available = get_available_providers()
+        if not available:
+            warnings.append(
+                "SWARM_LLM_MODE is set to 'live' but no LLM provider API keys were detected "
+                "(NVIDIA_NIM_API_KEY, OPENROUTER_API_KEY, or BYOK_API_KEY). "
+                "The gateway will fall back to offline deterministic mock mode."
+            )
+        else:
+            names = [p.name for p in available]
+            warnings.append(f"Live LLM mode active. Configured providers: {', '.join(names)}")
+    else:
+        warnings.append("LLM running in offline deterministic mock mode (SWARM_LLM_MODE=mock).")
+    return warnings

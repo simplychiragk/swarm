@@ -78,7 +78,7 @@ def generate_mock_json_response(json_schema: Any, messages: List[Dict[str, str]]
         })
 
     # 3. Scribe Whiteboard Card Summary Schema (contains "title" and "summary")
-    if "title" in props and "summary" in props:
+    if "title" in props and "summary" in props and "lane" in props:
         return json.dumps({
             "title": "Agent Coordination Milestone",
             "summary": "Frontend and Backend workers integrated the waitlist endpoint and verified responsive layout.",
@@ -86,7 +86,52 @@ def generate_mock_json_response(json_schema: Any, messages: List[Dict[str, str]]
             "lane": "FE",
         })
 
-    # 4. Fallback generic JSON constructed from properties
+    # 4. Worker Deliverable Schema (contains "technical_spec" or "code_files")
+    if "technical_spec" in props or "code_files" in props:
+        return json.dumps({
+            "message": "Constructed responsive waitlist form and verified schema validation.",
+            "technical_spec": "POST /api/waitlist accepts {name, email, role} and returns 201 Created.",
+            "code_files": [
+                {"path": "src/App.tsx", "description": "Hero section waitlist form"},
+                {"path": "api/main.py", "description": "FastAPI submission endpoint"}
+            ]
+        })
+
+    # 5. Chat Reply Schema (contains "intent" and "requires_response")
+    if "intent" in props and "requires_response" in props:
+        return json.dumps({
+            "intent": "proposal",
+            "to": "fe_worker",
+            "content": "Proposed API schema: POST /api/waitlist with JSON body {name, email, role}. Returns HTTP 201.",
+            "requires_response": True,
+            "done_with_thread": False
+        })
+
+    # 6. QA Evaluation Schema (contains "passed" and "steps")
+    if "passed" in props and "steps" in props:
+        return json.dumps({
+            "passed": True,
+            "steps": [
+                "1. Loaded landing page at http://localhost:5173",
+                "2. Populated work email field with 'test@iiitd.ac.in'",
+                "3. Clicked 'Request Access' button",
+                "4. Verified HTTP 201 Created and confirmed toast banner appeared"
+            ],
+            "errors": [],
+            "notes": "End-to-end form verification passed with zero DOM errors."
+        })
+
+    # 7. Steering Plan Diff Schema (contains "added", "removed", "changed", "kept")
+    if "added" in props and "kept" in props and "summary" in props:
+        return json.dumps({
+            "added": ["Add student ID and university fields to waitlist schema"],
+            "removed": [],
+            "changed": ["Update form hero component to support student tier badge"],
+            "kept": ["FastAPI endpoint infrastructure", "Honeycomb whiteboard Scribe monitoring"],
+            "summary": "Incorporated student audience steering into active worker plan."
+        })
+
+    # 8. Fallback generic JSON constructed from properties
     fallback = {}
     for key, spec in props.items():
         prop_type = spec.get("type", "string")

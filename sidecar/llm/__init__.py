@@ -1,6 +1,6 @@
 from .types import LLMResult
-from .gateway import complete, health_tracker
-from .config import ProviderConfig, PROVIDER_CHAIN, get_llm_mode
+from .gateway import complete, health_tracker, check_llm_dependencies
+from .config import ProviderConfig, PROVIDER_CHAIN, get_llm_mode, validate_startup_config
 
 __all__ = [
     "complete",
@@ -9,4 +9,6 @@ __all__ = [
     "PROVIDER_CHAIN",
     "get_llm_mode",
     "health_tracker",
+    "check_llm_dependencies",
+    "validate_startup_config",
 ]

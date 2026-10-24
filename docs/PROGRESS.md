@@ -5,7 +5,7 @@
 | Stage | Description | Status |
 |---|---|---|
 | Stage 0 | Baseline audit (green suite, runbook verification, TODO scan, gap analysis) | done |
-| Stage 1 | Model connection that really works (live verification, streaming, /health/deps, smoke --all) | not started |
+| Stage 1 | Model connection that really works (live verification, streaming, /health/deps, smoke --all) | done |
 | Stage 2 | SQLite persistence (WAL mode, versioned migrations, runs/events/cards/approvals/artifacts, DB replay) | not started |
 | Stage 3 | Permission layer (deterministic policy, tiers, escalation, safe command/path, audit) | done |
 | Stage 4 | Real-time agent chat (channels, threads, intents, decision board, concurrent agent tasks) | not started |
@@ -43,6 +43,19 @@
 - **Stage 8 & 9 (Hardening & Demo Safety)**: Pacing, provenance summary card, golden run recorder script, and offline demo mode.
 - **Stage 10 (Steering)**: Swarm steering with `steer`, `queue`, `interrupt` modes and plan diff receipts.
 - **Stage 12 (E2E Harness)**: Headless WebSocket test harness (`scripts/e2e_mock.py`, `scripts/e2e_live.py`) and finalized `docs/UI_HANDOFF.md`.
+
+---
+
+## Stage 1: Model Connection That Really Works
+
+### 1. What Was Built
+- **Environment Overrides for Models**: Enabled configuring models per tier via environment variables (`NVIDIA_MODEL_FAST`, `NVIDIA_MODEL_SMART`, `OPENROUTER_MODEL_FAST`, `OPENROUTER_MODEL_SMART`, `BYOK_MODEL_FAST`, `BYOK_MODEL_SMART`) while preserving fast/smart fallbacks in config.
+- **Token Streaming**: Added `stream=True` to `complete(messages, *, tier="fast", json_schema=None, timeout=30.0, stream=False)`. Yields delta tokens asynchronously using SSE streaming for remote providers and paced token generation for mock provider.
+- **Dependency Diagnostics (`GET /health/deps`)**: Implemented `check_llm_dependencies()` probing readiness of configured providers and tools, returning booleans and latency in milliseconds without exposing any API keys or credentials.
+- **Comprehensive Smoke Test CLI**: Enhanced `python -m sidecar.llm.smoke` with `--all` flag to iterate through all configured providers (NVIDIA, OpenRouter, BYOK, Mock), measure latency, and print outputs.
+- **Rich Deterministic Mock Payloads**: Added mock handlers for Worker deliverables, Chat replies, QA evaluations, and Steering plan diffs to guarantee offline reliability across all swarm subsystems.
+- **Tests**: Added tests for streaming deltas and dependency health diagnostics, bringing total test count to 34/34 passing.
+
 
 
 ---

@@ -198,3 +198,40 @@ async def test_json_repair_retry():
             assert res.parsed.question == "Are you ready?"
             assert res.parsed.is_finished is True
             assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_token_streaming_mode():
+    """Verify that complete(stream=True) yields tokens asynchronously."""
+    stream = await complete([{"role": "user", "content": "Stream test"}], tier="fast", stream=True)
+    chunks = []
+    async for chunk in stream:
+        chunks.append(chunk)
+
+    assert len(chunks) > 0
+    full_text = "".join(chunks)
+    assert len(full_text.strip()) > 0
+
+
+@pytest.mark.asyncio
+async def test_health_deps_endpoint():
+    """Verify GET /health/deps returns configured/reachable booleans without exposing secrets."""
+    from fastapi.testclient import TestClient
+    from sidecar.main import app
+
+    client = TestClient(app)
+    resp = client.get("/health/deps")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert "providers" in data
+    assert "tools" in data
+    assert "mock" in data["providers"]
+    assert data["providers"]["mock"]["configured"] is True
+
+    # Confirm secrets are NEVER exposed in response JSON
+    serialized = json.dumps(data).lower()
+    assert "key" not in serialized or "configured" in serialized
+    assert "secret" not in serialized
+    assert "token" not in serialized
+

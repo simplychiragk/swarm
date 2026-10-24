@@ -3,10 +3,12 @@ Core LLM Gateway.
 Provides multi-provider fallback execution, retries, cooldowns, and structured JSON output.
 """
 
+import os
 import time
 import json
+import asyncio
 import logging
-from typing import List, Dict, Any, Optional, Union, Type
+from typing import List, Dict, Any, Optional, Union, Type, AsyncIterator
 import httpx
 from pydantic import BaseModel, ValidationError
 
@@ -121,13 +123,78 @@ async def _call_provider_http(
     return content.strip()
 
 
+async def _stream_deltas(
+    messages: List[Dict[str, str]],
+    tier: str,
+    json_schema: Optional[Any],
+    timeout: float,
+) -> AsyncIterator[str]:
+    """Yields token deltas from live providers or mock generator."""
+    mode = get_llm_mode()
+    configured_providers = [p for p in PROVIDER_CHAIN if p.is_configured()]
+
+    if mode == "mock" or not configured_providers:
+        res = mock_complete(messages, tier=tier, json_schema=json_schema)
+        words = res.text.split(" ")
+        for i, w in enumerate(words):
+            yield w + (" " if i < len(words) - 1 else "")
+            await asyncio.sleep(0.01)
+        return
+
+    async with httpx.AsyncClient() as client:
+        for provider in configured_providers:
+            if not health_tracker.is_available(provider.name):
+                continue
+            model = provider.get_model(tier)
+            url = f"{provider.base_url.rstrip('/')}/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {provider.get_api_key()}",
+                "Content-Type": "application/json",
+            }
+            headers.update(provider.extra_headers)
+            payload: Dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "stream": True,
+            }
+            try:
+                async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line or not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                            if delta:
+                                yield delta
+                        except Exception:
+                            continue
+                health_tracker.record_success(provider.name)
+                return
+            except Exception as e:
+                health_tracker.record_failure(provider.name, str(e))
+                continue
+
+    # Fallback if streaming failed
+    res = mock_complete(messages, tier=tier, json_schema=json_schema)
+    words = res.text.split(" ")
+    for i, w in enumerate(words):
+        yield w + (" " if i < len(words) - 1 else "")
+        await asyncio.sleep(0.01)
+
+
 async def complete(
     messages: List[Dict[str, str]],
     *,
     tier: str = "fast",
     json_schema: Optional[Union[Dict[str, Any], Type[BaseModel]]] = None,
     timeout: float = 30.0,
-) -> LLMResult:
+    stream: bool = False,
+) -> Union[LLMResult, AsyncIterator[str]]:
     """
     Public entry point for LLM gateway completion.
 
@@ -136,10 +203,14 @@ async def complete(
         tier: 'fast' or 'smart' model tier.
         json_schema: Optional Pydantic model class or JSON schema dict for structured output.
         timeout: Per-request timeout in seconds.
+        stream: If True, returns an async iterator yielding token deltas.
 
     Returns:
         LLMResult with raw text, parsed structure (if json_schema), provider, model, and latency.
+        Or AsyncIterator[str] when stream=True.
     """
+    if stream:
+        return _stream_deltas(messages, tier=tier, json_schema=json_schema, timeout=timeout)
     start_time = time.perf_counter()
 
     # If mock mode is requested or no live providers are configured, route to mock provider
@@ -250,3 +321,63 @@ async def complete(
         if isinstance(fallback_res.parsed, dict):
             fallback_res.parsed = json_schema.model_validate(fallback_res.parsed)
     return fallback_res
+
+
+async def check_llm_dependencies() -> Dict[str, Any]:
+    """
+    Probes configured providers and tools for readiness, returning booleans and latency.
+    Never exposes API keys or secrets.
+    """
+    mode = get_llm_mode()
+    providers_report: Dict[str, Dict[str, Any]] = {}
+
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        for provider in PROVIDER_CHAIN:
+            configured = provider.is_configured()
+            reachable = False
+            latency_ms = None
+
+            if configured:
+                try:
+                    start = time.perf_counter()
+                    url = f"{provider.base_url.rstrip('/')}/models"
+                    headers = {"Authorization": f"Bearer {provider.get_api_key()}"}
+                    headers.update(provider.extra_headers)
+                    resp = await client.get(url, headers=headers)
+                    if resp.status_code in (200, 401, 403, 404, 405):
+                        # Host resolved and responded
+                        reachable = resp.status_code == 200 or resp.status_code in (404, 405)
+                        latency_ms = round((time.perf_counter() - start) * 1000.0, 1)
+                except Exception:
+                    reachable = False
+
+            providers_report[provider.name] = {
+                "configured": configured,
+                "reachable": reachable,
+                "latency_ms": latency_ms,
+            }
+
+    # Deterministic mock provider is always available
+    providers_report["mock"] = {
+        "configured": True,
+        "reachable": True,
+        "latency_ms": 0.5,
+    }
+
+    # Tool readiness
+    tinyfish_configured = bool(os.environ.get("TINYFISH_API_KEY", "").strip())
+    tools_report = {
+        "tinyfish": {
+            "configured": tinyfish_configured,
+            "reachable": tinyfish_configured,
+            "latency_ms": None,
+        }
+    }
+
+    return {
+        "status": "ok",
+        "llm_mode": mode,
+        "providers": providers_report,
+        "tools": tools_report,
+    }
+

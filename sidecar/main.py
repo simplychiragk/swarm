@@ -64,6 +64,9 @@ def now_iso() -> str:
 async def lifespan(app: FastAPI):
     mode = get_swarm_mode()
     logger.info(f"Swarm FastAPI sidecar starting up in SWARM_MODE={mode}...")
+    from sidecar.llm import validate_startup_config
+    for msg in validate_startup_config():
+        logger.info(f"[Startup Config] {msg}")
     yield
     logger.info("Swarm FastAPI sidecar shutting down...")
     mock_runner.stop()
@@ -99,6 +102,14 @@ async def health_check():
         "connections": len(broadcaster.active_connections),
         "mock_running": mock_runner.is_running,
     }
+
+
+@app.get("/health/deps")
+async def health_deps_endpoint():
+    """Returns connectivity and configuration status for LLM providers and tools without exposing secrets."""
+    from sidecar.llm import check_llm_dependencies
+    return await check_llm_dependencies()
+
 
 
 async def handle_inbound_envelope(envelope: InboundEnvelope) -> None:
