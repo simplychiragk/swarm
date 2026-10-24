@@ -4,8 +4,19 @@ Defines providers, endpoints, API key environment variables, and model tiers.
 """
 
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
 
 
 @dataclass
@@ -43,8 +54,8 @@ PROVIDER_CHAIN: List[ProviderConfig] = [
         base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         api_key_env="OPENROUTER_API_KEY",
         models_by_tier={
-            "fast": os.environ.get("OPENROUTER_MODEL_FAST", "meta-llama/llama-3.3-70b-instruct:free"),
-            "smart": os.environ.get("OPENROUTER_MODEL_SMART", "meta-llama/llama-3.3-70b-instruct:free"),
+            "fast": os.environ.get("OPENROUTER_MODEL_FAST", "xingchen-agi/xing4.0-29b-a4b"),
+            "smart": os.environ.get("OPENROUTER_MODEL_SMART", "xingchen-agi/xing4.0-29b-a4b"),
         },
         extra_headers={
             "HTTP-Referer": "https://github.com/simplychiragk/swarm",

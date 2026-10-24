@@ -95,10 +95,16 @@ async def _call_provider_http(
     }
     headers.update(provider.extra_headers)
 
-    payload: Dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-    }
+    if provider.name == "openrouter":
+        payload: Dict[str, Any] = {
+            "models": [model, "nvidia/nemotron-3.5-lightning:free", "google/gemma-4-26b-a4b-it:free"],
+            "messages": messages,
+        }
+    else:
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+        }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
@@ -152,11 +158,18 @@ async def _stream_deltas(
                 "Content-Type": "application/json",
             }
             headers.update(provider.extra_headers)
-            payload: Dict[str, Any] = {
-                "model": model,
-                "messages": messages,
-                "stream": True,
-            }
+            if provider.name == "openrouter":
+                payload: Dict[str, Any] = {
+                    "models": [model, "nvidia/nemotron-3.5-lightning:free", "google/gemma-4-26b-a4b-it:free"],
+                    "messages": messages,
+                    "stream": True,
+                }
+            else:
+                payload: Dict[str, Any] = {
+                    "model": model,
+                    "messages": messages,
+                    "stream": True,
+                }
             try:
                 async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
                     resp.raise_for_status()
