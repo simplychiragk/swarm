@@ -118,6 +118,8 @@ curl -X POST http://127.0.0.1:8000/mock/reset
 | `BYOK_API_KEY` | Bring-Your-Own-Key provider key | `None` | Optional |
 | `BYOK_BASE_URL` | Base URL for BYOK provider | `None` | Optional |
 | `TINYFISH_API_KEY` | TinyFish Search, Fetch & Browser QA key | `None` | Optional (used in live tools) |
+| `SWARM_TINYFISH_MODE` | Force TinyFish mock mode (`mock` or `live`) | `live` (if key set) | No |
+| `ENABLE_TINYFISH_BEES` | Enable ResearchBee and QABee in live engine | `false` | No |
 
 ---
 

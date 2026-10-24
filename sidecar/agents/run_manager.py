@@ -3,6 +3,7 @@ Swarm Run Manager.
 Orchestrates live agent farm runs, enforces global limits and timeouts, and coordinates approval gating.
 """
 
+import os
 import asyncio
 import logging
 from typing import Optional, Dict, Any, List
@@ -47,6 +48,9 @@ class SwarmRunManager(RunManager):
         self.be_worker: Optional[WorkerAgent] = None
         self.fe_worker: Optional[WorkerAgent] = None
         self.scribe: Optional[ScribeAgent] = None
+        self.research_bee: Optional[Any] = None
+        self.qa_bee: Optional[Any] = None
+        self.enable_tinyfish = os.environ.get("ENABLE_TINYFISH_BEES", "false").lower() in ("true", "1", "yes")
 
         self._watchdog_task: Optional[asyncio.Task] = None
         self._orchestrator_task: Optional[asyncio.Task] = None
@@ -59,6 +63,11 @@ class SwarmRunManager(RunManager):
         self.be_worker = WorkerAgent("be_worker", Lane.BE, self.bus)
         self.fe_worker = WorkerAgent("fe_worker", Lane.FE, self.bus)
         self.scribe = ScribeAgent(self.bus, self.decision_layer, batch_interval=2.0)
+
+        if self.enable_tinyfish:
+            from sidecar.tools import ResearchBee, QABee
+            self.research_bee = ResearchBee(self.bus)
+            self.qa_bee = QABee(self.bus)
 
         # Route messages to specific agent inboxes
         async def message_router(msg: FeedMessage) -> None:
@@ -120,6 +129,11 @@ class SwarmRunManager(RunManager):
                 logger.info("Interview step complete, awaiting further user input.")
                 return
 
+            # If enabled, Research Bee gathers live web specs prior to worker build
+            if self.enable_tinyfish and self.research_bee:
+                await asyncio.sleep(0.5)
+                await self.research_bee.execute_research("modern react waitlist form patterns")
+
             # 2. Parallel construction: BE Worker and FE Worker execute tasks
             await asyncio.sleep(1.0)
             await self.be_worker.execute_task(
@@ -134,6 +148,11 @@ class SwarmRunManager(RunManager):
                 title="Responsive Waitlist Hero Section",
                 description="Build dark modern UI with honeycomb styling and responsive form inputs",
             )
+
+            # If enabled, QA Bee executes automated browser verification
+            if self.enable_tinyfish and self.qa_bee:
+                await asyncio.sleep(0.5)
+                await self.qa_bee.execute_browser_verification("http://localhost:5173", "Verify waitlist form submission")
 
             # 3. Decision Layer checks if release requires human approval
             await asyncio.sleep(1.0)

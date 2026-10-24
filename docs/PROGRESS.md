@@ -7,7 +7,7 @@
 | Stage 1 | Contract bidirectional extensions, SWARM_MODE handling & RunManager interface | done |
 | Stage 2 | LLM Gateway with provider fallback chain, JSON schemas & tests | done |
 | Stage 3 | Multi-agent engine (Queen, Workers, Scribe) on async message bus | done |
-| Stage 4 | TinyFish Search, Fetch & Browser QA tools integration | planned |
+| Stage 4 | TinyFish Search, Fetch & Browser QA tools integration | done |
 
 ---
 
@@ -164,4 +164,50 @@
 - High-risk operations (such as production deployments) automatically raise an approval request before marking the run complete.
 
 ### 5. What Is Not Done
-- TinyFish live tool integration (scheduled for Stage 4).
+- None. Core pipeline, multi-agent engine, and live tools are functional.
+
+---
+
+## Stage 4: TinyFish Live-Web & Browser QA Tools Integration
+
+### 1. What Was Built
+- Implemented `TinyFishClient` in `sidecar/tools/client.py`:
+  - `search(query, purpose)` hitting `https://api.search.tinyfish.ai` (verified with official documentation).
+  - `fetch(url)` hitting `https://api.fetch.tinyfish.ai`.
+  - `run_browser_task(url, goal)` hitting `https://agent.tinyfish.ai/v1/run` (marked `TODO(verify-docs)` for live agent parameters).
+  - Deterministic offline mock mode supporting tests and offline presentations.
+- Implemented specialized agent bees in `sidecar/tools/agents.py`:
+  - `ResearchBee`: Gathers live documentation before build and attaches search evidence.
+  - `QABee`: Executes browser task, verifies form submission, and attaches screenshot evidence to whiteboard card.
+- Wired `ResearchBee` and `QABee` into `SwarmRunManager` behind the `ENABLE_TINYFISH_BEES` environment flag (off by default per spec).
+- Authored test suite in `sidecar/tests/tools/test_tinyfish.py` (5 tests passing).
+- Authored `sidecar/tools/README.md` and updated `docs/RUNBOOK.md` and `docs/DEMO.md`.
+
+### 2. Files Added or Changed
+- Added:
+  - `sidecar/tools/__init__.py`
+  - `sidecar/tools/client.py`
+  - `sidecar/tools/agents.py`
+  - `sidecar/tools/README.md`
+  - `sidecar/tests/tools/__init__.py`
+  - `sidecar/tests/tools/test_tinyfish.py`
+- Changed:
+  - `sidecar/agents/run_manager.py` (wired ResearchBee & QABee behind flag)
+  - `docs/RUNBOOK.md` (documented `TINYFISH_API_KEY`, `SWARM_TINYFISH_MODE`, `ENABLE_TINYFISH_BEES`)
+  - `docs/PROGRESS.md`
+
+### 3. How to Run and Test
+- Run tests: `.venv\Scripts\pytest sidecar/tests/tools`
+- Enable TinyFish bees in live mode:
+  ```powershell
+  $env:SWARM_MODE="live"
+  $env:ENABLE_TINYFISH_BEES="true"
+  python -m uvicorn sidecar.main:app --port 8000
+  ```
+
+### 4. Assumptions Made
+- The TinyFish Search and Fetch REST endpoints conform to official `docs.tinyfish.ai` documentation: `https://api.search.tinyfish.ai` and `https://api.fetch.tinyfish.ai`.
+- The remote browser agent execution endpoint is modeled after `https://agent.tinyfish.ai/v1/run` with a fallback mock payload containing screenshot evidence artifacts.
+
+### 5. What Is Not Done
+- In-person testing against physical TinyFish live API keys during hackathon hacking session. Marked `TODO(verify-docs)` on browser payload parameters.
