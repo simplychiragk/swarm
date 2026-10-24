@@ -4,13 +4,14 @@ Swarm provides a transparent, verifiable multi-agent development environment. Th
 
 ---
 
-## The Five Layers
+## The Six Layers
 
 1. **Interface Layer (`app/`)**: Tauri v2 desktop application running React, Tailwind, and Shadcn/ui. Displays the live Honeycomb Whiteboard and agent chatter feed.
 2. **Orchestration Layer (`sidecar/runtime/`, `sidecar/agents/`)**: Custom async agent farm (no heavy frameworks). Coordinates the Queen, Workers, Scribe, and QA/Research bees via an in-process message bus.
 3. **Decision Layer (`sidecar/decision/`)**: Pluggable decision engine (Jev / rule-based fallback). Provides structured decisions for task routing across lanes, approval gating, and whiteboard filtering.
 4. **Tools Layer (`sidecar/tools/`)**: TinyFish integration for live web research (Search & Fetch) and end-to-end browser QA with screenshot verification.
-5. **Model Gateway (`sidecar/llm/`)**: Multi-provider LLM gateway with automated priority fallback (NVIDIA NIM -> OpenRouter -> BYOK -> Mock).
+5. **Permission & Safety Layer (`sidecar/permissions/`)**: Deterministic policy gating, secret redaction, safe subprocess runner, path sandbox jail, and SQLite audit logging.
+6. **Model Gateway (`sidecar/llm/`)**: Multi-provider LLM gateway with automated priority fallback (NVIDIA NIM -> OpenRouter -> BYOK -> Mock).
 
 ---
 
@@ -44,8 +45,28 @@ flowchart TD
 
         Queen <--> DL
         Workers <--> DL
-        QA <--> TF
-        Research <--> TF
+
+        subgraph Permission Boundary
+            TE[ToolExecutor]
+            PE[PolicyEngine]
+            SafeCmd[run_safe_command]
+            SafePath[resolve_safe_path]
+            Redact[Secret Redaction]
+            Audit[(SQLite Audit DB)]
+
+            TE --> PE
+            PE -.->|Advise| DL
+            TE --> SafeCmd
+            TE --> SafePath
+            TE --> Redact
+            TE --> Audit
+            TE -.->|Approval Request| WS
+        end
+
+        Workers -->|Tool Invocations| TE
+        QA -->|Tool Invocations| TE
+        Research -->|Tool Invocations| TE
+        TE --> TF
 
         subgraph LLM Gateway
             GW[LLM complete entry point]
@@ -101,4 +122,5 @@ flowchart TD
 | `sidecar/llm/` | Unified LLM completion gateway, provider fallback chain, cooldowns, and structured output validator. | `httpx`, `pydantic` |
 | `sidecar/agents/` | Multi-agent execution engine (Queen, Workers, Scribe) and message bus (Stage 3). | `sidecar/llm`, `sidecar/decision`, `sidecar/broadcaster` |
 | `sidecar/tools/` | TinyFish Search, Fetch, and Browser Agent integration (Stage 4). | `httpx` |
-| `sidecar/main.py` | FastAPI application exposing `/health`, `/ws`, `/mock/*`, and decision test routes. | `fastapi`, `uvicorn`, all sidecar modules |
+| `sidecar/permissions/` | Centralized permission engine, secret redaction, safe subprocess runner, sandbox jail, and audit trail (Stage 5). | `sqlite3`, `subprocess` |
+| `sidecar/main.py` | FastAPI application exposing `/health`, `/ws`, `/mock/*`, `/runs/{id}/permissions`, `/runs/{id}/artifacts/*`. | `fastapi`, `uvicorn`, all sidecar modules |

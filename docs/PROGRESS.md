@@ -8,6 +8,7 @@
 | Stage 2 | LLM Gateway with provider fallback chain, JSON schemas & tests | done |
 | Stage 3 | Multi-agent engine (Queen, Workers, Scribe) on async message bus | done |
 | Stage 4 | TinyFish Search, Fetch & Browser QA tools integration | done |
+| Stage 5 | Permission & Safety System (Deterministic gating, secret redaction, safe subprocess runner, path jail, SQLite audit) | done |
 
 ---
 
@@ -211,3 +212,64 @@
 
 ### 5. What Is Not Done
 - In-person testing against physical TinyFish live API keys during hackathon hacking session. Marked `TODO(verify-docs)` on browser payload parameters.
+
+---
+
+## Stage 5: Permission & Safety System
+
+### 1. What Was Built
+- **Centralized Execution Gating**: Enforced the core principle that agents never execute tools directly. All tool calls route through `ToolExecutor.execute(...)`, which first queries `PolicyEngine.check(...)`.
+- **Deterministic Policy Configuration**: Created `sidecar/permissions/policy.json` specifying tiers (`FORBIDDEN`, `HIGH`, `MEDIUM`, `LOW`), allowlisted commands with permitted subcommands, budget limits, and protected paths. Unknown tools are denied by default.
+- **Path Sandboxing & Run Workspace Jail**: Implemented `sidecar/permissions/path_safety.py` locking file reads and writes strictly to `workspace/<run_id>/`. Path traversal sequences (`..`), symlink escapes, root repository access, and secret file accesses (`.env`, `.git`, SSH keys) are caught and rejected with `PathSafetyError`.
+- **Subprocess Runner with Scrubbed Environment**: Implemented `sidecar/permissions/command_runner.py` with argv list execution (no `shell=True`), scrubbed minimal child environment (stripping all `SWARM_*` variables, API keys, tokens), process-tree termination (`taskkill /F /T /PID` on Windows), and output character truncation.
+- **Secret Redaction Engine**: Implemented `sidecar/permissions/redaction.py` with regex patterns for API keys (OpenAI, OpenRouter, NVIDIA, AWS, GitHub, bearer tokens) and dynamic scrubbing of ambient environment variables containing `KEY`, `SECRET`, `TOKEN`, `PASSWORD`, or starting with `SWARM_`.
+- **SQLite Audit Trail**: Implemented `sidecar/permissions/audit.py` recording all permission checks, evaluations, execution durations, scrubbed arguments, and outcomes to SQLite (`workspace/swarm_audit.db`).
+- **Interactive Approval Coordination & Scope Grants**: Built `ApprovalCoordinator` enabling tool suspension on `HIGH` or `MEDIUM` tier actions, dispatching WebSocket `approval_request` events to the desktop app with argument previews and scope options (`once`, `run`, `deny`), supporting timeout auto-denial.
+- **Operational Modes**: Introduced `SWARM_PERMISSION_MODE=strict|demo`. `strict` requires approvals for `HIGH` and `MEDIUM`. `demo` auto-allows allowlisted `MEDIUM` actions while keeping `HIGH` interactive and `FORBIDDEN` non-bypassable.
+- **REST Endpoints**: Added `GET /runs/{run_id}/permissions` and safe `GET /runs/{run_id}/artifacts/{artifact_path:path}` to `sidecar/main.py`.
+- **Comprehensive 14-Point Test Suite**: Implemented `sidecar/tests/permissions/test_permissions.py` covering forbidden secrets, path traversal, unknown tools, allowlisted commands, timeout process-tree termination, budget exhaustion, escalation rules, approval timeouts, run-scope grants, secret redaction, strict vs demo modes, immutable FORBIDDEN tier, and REST endpoints.
+- **Documentation**: Authored `docs/PERMISSIONS.md`, `sidecar/permissions/README.md`, updated `docs/CONTRACT.md`, `docs/RUNBOOK.md`, and `docs/ARCHITECTURE.md`.
+
+### 2. Files Added or Changed
+- Added:
+  - `sidecar/permissions/policy.json`
+  - `sidecar/permissions/redaction.py`
+  - `sidecar/permissions/path_safety.py`
+  - `sidecar/permissions/command_runner.py`
+  - `sidecar/permissions/audit.py`
+  - `sidecar/permissions/policy.py`
+  - `sidecar/permissions/executor.py`
+  - `sidecar/permissions/__init__.py`
+  - `sidecar/permissions/README.md`
+  - `sidecar/tests/permissions/__init__.py`
+  - `sidecar/tests/permissions/test_permissions.py`
+  - `docs/PERMISSIONS.md`
+- Changed:
+  - `shared/schemas/approval_request.json`
+  - `shared/schemas/approval_response.json`
+  - `shared/types/contracts.ts`
+  - `app/src/types/contracts.ts`
+  - `sidecar/models/contracts.py`
+  - `sidecar/tools/agents.py`
+  - `sidecar/agents/worker.py`
+  - `sidecar/agents/run_manager.py`
+  - `sidecar/main.py`
+  - `docs/CONTRACT.md`
+  - `docs/RUNBOOK.md`
+  - `docs/ARCHITECTURE.md`
+  - `docs/PROGRESS.md`
+  - `.gitignore`
+
+### 3. How to Run and Test
+- Run full test suite:
+  ```powershell
+  .venv\Scripts\pytest sidecar/tests -v
+  ```
+- Run permissions tests specifically:
+  ```powershell
+  .venv\Scripts\pytest sidecar/tests/permissions -v
+  ```
+
+### 4. Assumptions Made
+- The permission system provides in-process software guardrails. Multi-tenant hostile untrusted code execution requires containerized or VM sandboxing (documented in `docs/PERMISSIONS.md`).
+- `FORBIDDEN` rules cannot be disabled or bypassed by any environment variable or configuration option under any circumstances.

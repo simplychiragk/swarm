@@ -119,6 +119,8 @@ curl -X POST http://127.0.0.1:8000/mock/reset
 | `BYOK_BASE_URL` | Base URL for BYOK provider | `None` | Optional |
 | `TINYFISH_API_KEY` | TinyFish Search, Fetch & Browser QA key | `None` | Optional (used in live tools) |
 | `SWARM_TINYFISH_MODE` | Force TinyFish mock mode (`mock` or `live`) | `live` (if key set) | No |
+| `SWARM_PERMISSION_MODE` | Permission gating mode (`strict` or `demo`) | `strict` | No |
+| `SWARM_DB_PATH` | Path to SQLite audit database | `workspace/swarm_audit.db` | No |
 | `ENABLE_TINYFISH_BEES` | Enable ResearchBee and QABee in live engine | `false` | No |
 
 ---
@@ -145,3 +147,10 @@ curl -X POST http://127.0.0.1:8000/mock/reset
 ### Problem: Provider 429 or 5xx errors during live runs
 - **Cause:** Upstream model provider rate limit or downtime.
 - **Fix:** The LLM gateway automatically logs the failure and falls through from NVIDIA NIM to OpenRouter free models to BYOK. If all remote providers fail, fall back to offline mode by setting `SWARM_LLM_MODE=mock`.
+
+### Problem: Agent actions hanging or timing out on approvals
+- **Cause:** `SWARM_PERMISSION_MODE` defaults to `strict`, which pauses execution and waits up to 120 seconds for interactive user approval on `HIGH` and `MEDIUM` tier actions.
+- **Fix:**
+  - In the desktop UI, approve or redirect the pending action modal.
+  - Or, grant `"run"` scope on the first prompt to auto-approve identical actions for the run.
+  - For continuous demo runs (e.g. hackathon judging), set `SWARM_PERMISSION_MODE=demo` so `MEDIUM` actions (allowlisted commands, TinyFish fetch/browser tasks) are auto-approved.

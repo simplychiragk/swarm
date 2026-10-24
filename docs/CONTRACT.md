@@ -108,6 +108,13 @@ Presents a critical action to the user for interactive sign-off.
 - `lane` (enum, required): `"FE"` | `"BE"` | `"DB"` | `"Design"` | `"Test"` | `"Docs"` | `"Ops"` | `"none"`
 - `card` (object, optional): Embedded snapshot of the target WhiteboardCard.
 - `created_at` (string, required): ISO 8601 timestamp when request was generated.
+- `tool` (string, optional): Target tool name requiring authorization (e.g. `"command_run"`).
+- `args_preview` (object, optional): Scrubbed, redacted preview of arguments.
+- `risk` (string, optional): Risk tier (`"HIGH"` | `"MEDIUM"`).
+- `reason` (string, optional): Rationale explaining why authorization is required.
+- `agent` (string, optional): Requesting agent identifier (e.g. `"worker_fe"`).
+- `scope_options` (array of strings, optional): Permitted scopes: `["once", "run", "deny"]`.
+- `expires_in_s` (number, optional): Timeout in seconds before auto-denial (default: `120`).
 
 #### Example:
 ```json
@@ -116,10 +123,19 @@ Presents a critical action to the user for interactive sign-off.
   "payload": {
     "id": "appr-deploy-99",
     "card_id": "card-approval",
-    "prompt": "TinyFish browser QA passed. Approve publishing landing page live to production?",
-    "options": ["Approve & Deploy Live", "Request Revision", "Reject"],
+    "prompt": "Worker FE requests to run command: npm install stripe. Approve?",
+    "options": ["Approve", "Redirect"],
     "lane": "Ops",
-    "created_at": "2026-10-24T12:03:00.000Z"
+    "created_at": "2026-10-24T12:03:00.000Z",
+    "tool": "command_run",
+    "args_preview": {
+      "command": ["npm", "install", "stripe"]
+    },
+    "risk": "HIGH",
+    "reason": "Non-allowlisted command execution requires authorization",
+    "agent": "worker_fe",
+    "scope_options": ["once", "run", "deny"],
+    "expires_in_s": 120
   }
 }
 ```
@@ -156,6 +172,7 @@ Inbound user response resolving an active approval request.
 - `card_id` (string, required): Associated WhiteboardCard ID.
 - `decision` (enum, required): `"approve"` | `"redirect"`
 - `note` (string, optional): Context or revision instructions if redirected.
+- `scope` (enum, optional): `"once"` | `"run"` | `"deny"` (defaults to `"once"` on approval)
 
 #### Example:
 ```json
@@ -165,7 +182,41 @@ Inbound user response resolving an active approval request.
     "approval_id": "appr-deploy-99",
     "card_id": "card-approval",
     "decision": "approve",
-    "note": "Looks great, deploy immediately."
+    "scope": "run",
+    "note": "Looks great, approved for this run."
   }
 }
 ```
+
+---
+
+## REST Endpoints
+
+In addition to the WebSocket endpoint, the sidecar exposes REST endpoints for run artifacts and permission audits:
+
+### 1. `GET /runs/{run_id}/permissions`
+Retrieves the recorded SQLite permission audit trail for the specified `run_id`.
+
+**Response (JSON)**:
+```json
+[
+  {
+    "id": 1,
+    "timestamp": "2026-10-24T12:01:00.000Z",
+    "run_id": "run-101",
+    "agent": "worker_fe",
+    "tool": "file_write",
+    "tier": "LOW",
+    "decision": "allow",
+    "reason": "Allowed by tier LOW",
+    "args_scrubbed": "{\"path\": \"src/App.tsx\"}",
+    "approved_by": "auto",
+    "duration_ms": 1.2,
+    "status": "success"
+  }
+]
+```
+
+### 2. `GET /runs/{run_id}/artifacts/{artifact_path:path}`
+Safely retrieves an artifact file created during a run. Path traversal (`..`) outside `workspace/{run_id}/` is strictly rejected with HTTP 403.
+
