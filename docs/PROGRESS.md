@@ -4,11 +4,46 @@
 
 | Stage | Description | Status |
 |---|---|---|
-| Stage 1 | Contract bidirectional extensions, SWARM_MODE handling & RunManager interface | done |
-| Stage 2 | LLM Gateway with provider fallback chain, JSON schemas & tests | done |
-| Stage 3 | Multi-agent engine (Queen, Workers, Scribe) on async message bus | done |
-| Stage 4 | TinyFish Search, Fetch & Browser QA tools integration | done |
-| Stage 5 | Permission & Safety System (Deterministic gating, secret redaction, safe subprocess runner, path jail, SQLite audit) | done |
+| Stage 0 | Baseline audit (green suite, runbook verification, TODO scan, gap analysis) | done |
+| Stage 1 | Model connection that really works (live verification, streaming, /health/deps, smoke --all) | not started |
+| Stage 2 | SQLite persistence (WAL mode, versioned migrations, runs/events/cards/approvals/artifacts, DB replay) | not started |
+| Stage 3 | Permission layer (deterministic policy, tiers, escalation, safe command/path, audit) | done |
+| Stage 4 | Real-time agent chat (channels, threads, intents, decision board, concurrent agent tasks) | not started |
+| Stage 5 | TinyFish for real (Search, Fetch, browser agent, ResearchBee grounding, smoke script) | not started |
+| Stage 6 | Workers build real project (served locally, optional tunnel, seeded-bug mode) | not started |
+| Stage 7 | QA bee & verify loop (browser test, fail/fix/pass, 2 retry cap, approval gate) | not started |
+| Stage 8 | End-to-end hardening of core path (live runs, pacing, provenance summary card) | not started |
+| Stage 9 | Demo safety (golden run recorder, offline demo mode, DEMO.md script) | not started |
+| Stage 10 | Steering running swarm (steer, queue, interrupt, plan diff, receipts) | not started |
+| Stage 11 | Decision layer message delivery (rules guard, optional Jev) | not started |
+| Stage 12 | End-to-end harness & UI handoff (scripts/e2e_mock.py, e2e_live.py, UI_HANDOFF.md) | not started |
+| Stage 13 | The Gauntlet (persona testing, HTML report) [COULD] | not started |
+
+---
+
+## Stage 0: Baseline Audit
+
+### 1. What Was Audited
+- Pulled latest `origin/main` (including UI commits from teammate).
+- Executed full test suite: 32/32 tests passing in 6.27s.
+- Tested FastAPI sidecar in both `SWARM_MODE=mock` and `SWARM_MODE=live` with `SWARM_LLM_MODE=mock`; verified HTTP 200 OK on `/health`.
+- Validated `docs/RUNBOOK.md` fresh-clone procedure in `$env:TEMP`; confirmed clean repository clone, `.env.example` copying, and setup.
+- Scanned for `TODO(verify-docs)` references across repository:
+  1. `sidecar/tools/client.py`: TinyFish Browser Agent endpoint (`https://agent.tinyfish.ai/v1/run`) parameters schema.
+  2. `sidecar/tools/client.py`: TinyFish Fetch endpoint JSON body payload format.
+  3. `sidecar/decision/rule_engine.py`: Jev decision endpoint and payload schema (docs.typesafe.ai).
+
+### 2. Known Gaps
+- **Stage 1 (LLM Gateway)**: Lacks optional token streaming (`stream=True`), `GET /health/deps` endpoint, and `--all` flag on `sidecar.llm.smoke`.
+- **Stage 2 (Storage)**: Storage only persists `permission_events`; full persistence for runs, events with sequence numbers, cards, approvals, artifacts, and DB-backed replay needed.
+- **Stage 4 (Agent Chat)**: Real-time agent chat channels (`hive`, `plan`, `build`, `qa`), thread tracking, intent tagging, and decision cards board.
+- **Stage 5 (TinyFish)**: Live TinyFish Search, Fetch, and remote browser testing with fallback provenance.
+- **Stage 6 (Worker Project & Serving)**: Generation of complete landing page and form submission backend in `workspace/<run_id>/`, served locally with optional tunnel and seeded-bug mode.
+- **Stage 7 (QA Loop)**: Closed-loop fail/fix/pass verification cycle with 2-retry limit.
+- **Stage 8 & 9 (Hardening & Demo Safety)**: Pacing, provenance summary card, golden run recorder script, and offline demo mode.
+- **Stage 10 (Steering)**: Swarm steering with `steer`, `queue`, `interrupt` modes and plan diff receipts.
+- **Stage 12 (E2E Harness)**: Headless WebSocket test harness (`scripts/e2e_mock.py`, `scripts/e2e_live.py`) and finalized `docs/UI_HANDOFF.md`.
+
 
 ---
 
