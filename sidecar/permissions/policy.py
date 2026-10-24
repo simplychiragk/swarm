@@ -10,7 +10,7 @@ import re
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Literal, Set
+from typing import Dict, Any, List, Optional, Literal, Set, Union
 
 from .redaction import redact
 from .path_safety import FORBIDDEN_FILE_PATTERNS, PROTECTED_PROJECT_DIRS
@@ -23,7 +23,7 @@ class Decision:
     reason: str
     scope_options: Optional[List[str]] = None
     args_preview: str = ""
-    expires_in_s: int = 120
+    expires_in_s: Union[int, float] = 120
     decided_by: str = "policy"
 
 

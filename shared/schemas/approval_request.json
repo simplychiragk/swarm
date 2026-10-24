@@ -61,7 +61,7 @@
       "description": "Optional grant scope options, e.g. ['once', 'run']"
     },
     "expires_in_s": {
-      "type": "integer",
+      "type": "number",
       "description": "Optional seconds until permission request times out to deny"
     }
   },

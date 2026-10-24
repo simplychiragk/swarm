@@ -83,7 +83,7 @@ class ApprovalRequest(BaseModel):
     reason: Optional[str] = None
     agent: Optional[str] = None
     scope_options: Optional[List[str]] = None
-    expires_in_s: Optional[int] = None
+    expires_in_s: Optional[Union[int, float]] = None
 
 
 class UserMessage(BaseModel):
