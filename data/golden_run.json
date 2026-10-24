@@ -1,0 +1,1229 @@
+{
+  "version": 1,
+  "exported_at": "2026-10-24T17:55:41.568305+00:00",
+  "run_id": "test-run-qa-loop-7",
+  "goal": "Build a landing page with a waitlist form",
+  "event_count": 52,
+  "events": [
+    {
+      "seq": 1,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-8ce5b4",
+        "timestamp": "2026-10-24T17:40:45.961782+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form and verify toast)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:40:45.961782+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 2,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-69dd92",
+        "timestamp": "2026-10-24T17:40:48.372805+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [PASS]. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "PASS",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:40:48.372805+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 3,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - PASS",
+        "summary": "Automated browser validation result: PASS. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "status": "done",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"
+          }
+        ],
+        "updated_at": "2026-10-24T17:40:48.374561+00:00"
+      },
+      "timestamp": "2026-10-24T17:40:48.374887+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 4,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-6d0e34",
+        "timestamp": "2026-10-24T17:40:48.566180+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:40:48.566180+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 5,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-de99c6",
+        "timestamp": "2026-10-24T17:40:50.707309+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [FAIL]. Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "FAIL",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:40:50.707309+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 6,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - FAIL",
+        "summary": "Automated browser validation result: FAIL. Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.",
+        "status": "failed",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-fail.png"
+          },
+          {
+            "kind": "browser_error",
+            "url_or_text": "Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form."
+          }
+        ],
+        "updated_at": "2026-10-24T17:40:50.707309+00:00"
+      },
+      "timestamp": "2026-10-24T17:40:50.707309+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 7,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-7adaea",
+        "timestamp": "2026-10-24T17:40:50.709874+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 1/2): Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:40:50.709874+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 8,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-worker-717b27",
+        "timestamp": "2026-10-24T17:40:50.911708+00:00",
+        "sender": "worker",
+        "lane": "FE",
+        "type": "chat",
+        "content": "FE Worker: Resolved issue. Submit button enabled, form event handlers restored. Ready for QA retest.",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "handoff",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:40:50.911708+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 9,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-99be12",
+        "timestamp": "2026-10-24T17:40:50.913743+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:40:50.913743+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 10,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-79abd2",
+        "timestamp": "2026-10-24T17:40:52.898285+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [PASS]. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "PASS",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:40:52.898796+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 11,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - PASS",
+        "summary": "Automated browser validation result: PASS. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "status": "done",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"
+          }
+        ],
+        "updated_at": "2026-10-24T17:40:52.899418+00:00"
+      },
+      "timestamp": "2026-10-24T17:40:52.899418+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 12,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-e937bd",
+        "timestamp": "2026-10-24T17:40:52.910048+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 1/2): Persistent timeout on submit action.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:40:52.910048+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 13,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-409878",
+        "timestamp": "2026-10-24T17:40:52.910048+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 2/2): Persistent timeout on submit action.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:40:52.910048+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 14,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-5c255d",
+        "timestamp": "2026-10-24T17:41:12.075061+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form and verify toast)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:41:12.075061+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 15,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-23aa3f",
+        "timestamp": "2026-10-24T17:41:14.303447+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [PASS]. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "PASS",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:41:14.303447+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 16,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - PASS",
+        "summary": "Automated browser validation result: PASS. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "status": "done",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"
+          }
+        ],
+        "updated_at": "2026-10-24T17:41:14.303447+00:00"
+      },
+      "timestamp": "2026-10-24T17:41:14.303447+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 17,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-c99b8d",
+        "timestamp": "2026-10-24T17:41:14.957944+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:41:14.959940+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 18,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-806fe9",
+        "timestamp": "2026-10-24T17:41:16.842131+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [FAIL]. Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "FAIL",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:41:16.842676+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 19,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - FAIL",
+        "summary": "Automated browser validation result: FAIL. Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.",
+        "status": "failed",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-fail.png"
+          },
+          {
+            "kind": "browser_error",
+            "url_or_text": "Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form."
+          }
+        ],
+        "updated_at": "2026-10-24T17:41:16.843190+00:00"
+      },
+      "timestamp": "2026-10-24T17:41:16.843190+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 20,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-64a102",
+        "timestamp": "2026-10-24T17:41:16.843794+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 1/2): Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:41:16.844255+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 21,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-worker-1ac42b",
+        "timestamp": "2026-10-24T17:41:17.172410+00:00",
+        "sender": "worker",
+        "lane": "FE",
+        "type": "chat",
+        "content": "FE Worker: Resolved issue. Submit button enabled, form event handlers restored. Ready for QA retest.",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "handoff",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:41:17.172410+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 22,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-539090",
+        "timestamp": "2026-10-24T17:41:17.172410+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:41:17.172410+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 23,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-0883a7",
+        "timestamp": "2026-10-24T17:41:19.142835+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [PASS]. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "PASS",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:41:19.143256+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 24,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - PASS",
+        "summary": "Automated browser validation result: PASS. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "status": "done",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"
+          }
+        ],
+        "updated_at": "2026-10-24T17:41:19.143256+00:00"
+      },
+      "timestamp": "2026-10-24T17:41:19.143256+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 25,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-75a8fd",
+        "timestamp": "2026-10-24T17:41:19.153899+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 1/2): Persistent timeout on submit action.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:41:19.153899+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 26,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-a925a4",
+        "timestamp": "2026-10-24T17:41:19.154917+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 2/2): Persistent timeout on submit action.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:41:19.155521+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 27,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-547218",
+        "timestamp": "2026-10-24T17:42:39.791401+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form and verify toast)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:42:39.791741+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 28,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-af7982",
+        "timestamp": "2026-10-24T17:42:41.970460+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [PASS]. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "PASS",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:42:41.970973+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 29,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - PASS",
+        "summary": "Automated browser validation result: PASS. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "status": "done",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"
+          }
+        ],
+        "updated_at": "2026-10-24T17:42:41.970973+00:00"
+      },
+      "timestamp": "2026-10-24T17:42:41.970973+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 30,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-8ec1a8",
+        "timestamp": "2026-10-24T17:42:42.122728+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:42:42.123291+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 31,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-9477a8",
+        "timestamp": "2026-10-24T17:42:43.989546+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [FAIL]. Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "FAIL",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:42:43.989546+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 32,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - FAIL",
+        "summary": "Automated browser validation result: FAIL. Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.",
+        "status": "failed",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-fail.png"
+          },
+          {
+            "kind": "browser_error",
+            "url_or_text": "Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form."
+          }
+        ],
+        "updated_at": "2026-10-24T17:42:43.991304+00:00"
+      },
+      "timestamp": "2026-10-24T17:42:43.991946+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 33,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-c8b3d0",
+        "timestamp": "2026-10-24T17:42:43.991946+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 1/2): Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:42:43.991946+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 34,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-worker-f26a09",
+        "timestamp": "2026-10-24T17:42:44.110871+00:00",
+        "sender": "worker",
+        "lane": "FE",
+        "type": "chat",
+        "content": "FE Worker: Resolved issue. Submit button enabled, form event handlers restored. Ready for QA retest.",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "handoff",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:42:44.111575+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 35,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-7298bd",
+        "timestamp": "2026-10-24T17:42:44.112094+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:42:44.112094+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 36,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-583289",
+        "timestamp": "2026-10-24T17:42:45.939722+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [PASS]. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "PASS",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:42:45.939722+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 37,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - PASS",
+        "summary": "Automated browser validation result: PASS. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "status": "done",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"
+          }
+        ],
+        "updated_at": "2026-10-24T17:42:45.939722+00:00"
+      },
+      "timestamp": "2026-10-24T17:42:45.939722+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 38,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-57ca3d",
+        "timestamp": "2026-10-24T17:42:45.949878+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 1/2): Persistent timeout on submit action.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:42:45.950198+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 39,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-9bb6df",
+        "timestamp": "2026-10-24T17:42:45.950949+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 2/2): Persistent timeout on submit action.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:42:45.951360+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 40,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-0c0d16",
+        "timestamp": "2026-10-24T17:52:44.825266+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form and verify toast)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:52:44.825633+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 41,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-e9f63e",
+        "timestamp": "2026-10-24T17:52:47.123009+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [PASS]. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "PASS",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:52:47.123009+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 42,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - PASS",
+        "summary": "Automated browser validation result: PASS. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "status": "done",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"
+          }
+        ],
+        "updated_at": "2026-10-24T17:52:47.123009+00:00"
+      },
+      "timestamp": "2026-10-24T17:52:47.123009+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 43,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-d28a2d",
+        "timestamp": "2026-10-24T17:52:47.241711+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:52:47.241711+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 44,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-eaf280",
+        "timestamp": "2026-10-24T17:52:49.098130+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [FAIL]. Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "FAIL",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:52:49.098130+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 45,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - FAIL",
+        "summary": "Automated browser validation result: FAIL. Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.",
+        "status": "failed",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-fail.png"
+          },
+          {
+            "kind": "browser_error",
+            "url_or_text": "Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form."
+          }
+        ],
+        "updated_at": "2026-10-24T17:52:49.098130+00:00"
+      },
+      "timestamp": "2026-10-24T17:52:49.098130+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 46,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-b4a860",
+        "timestamp": "2026-10-24T17:52:49.098130+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 1/2): Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:52:49.101608+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 47,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-worker-9c92c6",
+        "timestamp": "2026-10-24T17:52:49.203712+00:00",
+        "sender": "worker",
+        "lane": "FE",
+        "type": "chat",
+        "content": "FE Worker: Resolved issue. Submit button enabled, form event handlers restored. Ready for QA retest.",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "handoff",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:52:49.203712+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 48,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-dc06ff",
+        "timestamp": "2026-10-24T17:52:49.203712+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "status",
+        "content": "QA Bee: Dispatching TinyFish browser agent to 'http://localhost:8000/preview/' (Goal: Submit form)...",
+        "metadata": {},
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:52:49.203712+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 49,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-qa-6a26df",
+        "timestamp": "2026-10-24T17:52:51.111267+00:00",
+        "sender": "qa",
+        "lane": "Test",
+        "type": "evidence",
+        "content": "QA Bee (TinyFish Browser): Verification [PASS]. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "metadata": {
+          "tool": "tinyfish_browser_agent",
+          "verdict": "PASS",
+          "target_url": "http://localhost:8000/preview/",
+          "provenance": "simulated"
+        },
+        "channel": "qa",
+        "to": null,
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": null,
+        "intent": "chat",
+        "requires_response": false
+      },
+      "timestamp": "2026-10-24T17:52:51.111267+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 50,
+      "event_type": "card_upsert",
+      "payload": {
+        "id": "card-qa-verify",
+        "title": "Browser QA Verification (TinyFish) - PASS",
+        "summary": "Automated browser validation result: PASS. Browser agent successfully navigated to http://localhost:8000/preview/, located the waitlist form, filled test inputs, and verified the confirmation toast banner.",
+        "status": "done",
+        "lane": "Test",
+        "evidence": [
+          {
+            "kind": "screenshot",
+            "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"
+          }
+        ],
+        "updated_at": "2026-10-24T17:52:51.111267+00:00"
+      },
+      "timestamp": "2026-10-24T17:52:51.111267+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 51,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-647d5b",
+        "timestamp": "2026-10-24T17:52:51.121060+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 1/2): Persistent timeout on submit action.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:52:51.121641+00:00",
+      "provenance": "replay"
+    },
+    {
+      "seq": 52,
+      "event_type": "feed_message",
+      "payload": {
+        "id": "msg-queen-79ccae",
+        "timestamp": "2026-10-24T17:52:51.122321+00:00",
+        "sender": "queen",
+        "lane": "FE",
+        "type": "task",
+        "content": "Queen -> @fe_worker: QA validation failed (Attempt 2/2): Persistent timeout on submit action.. Ensure submit button is enabled and form handles submit properly.",
+        "metadata": {},
+        "channel": "qa",
+        "to": "fe_worker",
+        "thread_id": null,
+        "reply_to": null,
+        "mentions": [
+          "fe_worker"
+        ],
+        "intent": "chat",
+        "requires_response": true
+      },
+      "timestamp": "2026-10-24T17:52:51.122631+00:00",
+      "provenance": "replay"
+    }
+  ]
+}

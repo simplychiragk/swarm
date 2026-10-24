@@ -3,8 +3,11 @@ Mock Event Generator for Swarm.
 Emits a realistic fake run of the waitlist landing page scenario from Section 9 of SWARM_CONTEXT.md.
 """
 
+import os
+import json
 import asyncio
 import logging
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from sidecar.models.contracts import (
@@ -371,10 +374,56 @@ class MockRunner:
         finally:
             self.is_running = False
 
+    async def _run_golden_stream(self, golden_path: Path, delay_seconds: float = 1.0):
+        self.is_running = True
+        try:
+            logger.info(f"Starting golden run replay from {golden_path}...")
+            data = json.loads(golden_path.read_text(encoding="utf-8"))
+            events = data.get("events", [])
+            run_id = data.get("run_id", "golden-run")
+
+            for ev in events:
+                event_type = ev.get("event_type", "feed_message")
+                payload = dict(ev.get("payload", {}))
+
+                # Update timestamp on the fly for freshness
+                now = now_iso()
+                if "timestamp" in payload:
+                    payload["timestamp"] = now
+                if "updated_at" in payload:
+                    payload["updated_at"] = now
+                if "created_at" in payload:
+                    payload["created_at"] = now
+
+                envelope = {"type": event_type, "payload": payload}
+                await broadcaster.broadcast(envelope, run_id=run_id, provenance="replay")
+                await asyncio.sleep(delay_seconds)
+            logger.info("Golden run replay finished.")
+        except asyncio.CancelledError:
+            logger.info("Golden run replay cancelled.")
+        except Exception as e:
+            logger.error(f"Error during golden run replay: {e}", exc_info=True)
+        finally:
+            self.is_running = False
+
     def start(self, delay_seconds: float = 1.2) -> bool:
         if self.is_running and self._task and not self._task.done():
             logger.info("Mock runner already active.")
             return False
+
+        pacing_mode = os.environ.get("SWARM_PACING", "").lower()
+        if pacing_mode == "fast":
+            delay_seconds = 0.05
+        elif pacing_mode == "instant":
+            delay_seconds = 0.0
+
+        demo_mode = os.environ.get("SWARM_DEMO_MODE", "").lower()
+        golden_file = Path(__file__).resolve().parent.parent / "data" / "golden_run.json"
+
+        if demo_mode == "golden" and golden_file.exists():
+            self._task = asyncio.create_task(self._run_golden_stream(golden_file, delay_seconds=delay_seconds))
+            return True
+
         self._task = asyncio.create_task(self._run_stream(delay_seconds=delay_seconds))
         return True
 

@@ -13,7 +13,7 @@
 | Stage 6 | Workers build real project (served locally, optional tunnel, seeded-bug mode) | done |
 | Stage 7 | QA bee & verify loop (browser test, fail/fix/pass, 2 retry cap, approval gate) | done |
 | Stage 8 | End-to-end hardening of core path (live runs, pacing, provenance summary card) | done |
-| Stage 9 | Demo safety (golden run recorder, offline demo mode, DEMO.md script) | not started |
+| Stage 9 | Demo safety (golden run recorder, offline demo mode, DEMO.md script) | done |
 | Stage 10 | Steering running swarm (steer, queue, interrupt, plan diff, receipts) | not started |
 | Stage 11 | Decision layer message delivery (rules guard, optional Jev) | not started |
 | Stage 12 | End-to-end harness & UI handoff (scripts/e2e_mock.py, e2e_live.py, UI_HANDOFF.md) | not started |
@@ -458,4 +458,15 @@
 - **Code Viewer Saving**: Wired `onSaveContent` in `app/src/App.tsx` and `FileViewerModal.tsx` to `PUT /workspace/files/{path}`, persisting edits directly into the run workspace.
 - **Approval Modal Security Metadata**: Enhanced `app/src/components/ApprovalModal.tsx` to display real-time permission context (`tool`, `risk`, `reason`, `args_preview`) and an interactive `"once"` vs `"run"` scope selection toggle.
 - **Tests**: Added `test_workspace_tree_and_file_endpoints` in `sidecar/tests/permissions/test_permissions.py` validating tree listing, file updates, creation, and path traversal rejection.
+
+---
+
+## Stage 9: Demo Safety (Golden Run & Offline Replay Mode)
+
+### 1. What Was Built
+- **Golden Run Recorder (`scripts/make_golden_run.py`)**: Script that extracts a verified successful multi-agent execution run from SQLite (or the reference Section 9 scenario), applies secret redaction across all payloads, stamps every event with `provenance: 'replay'`, and serializes to `data/golden_run.json`.
+- **Deterministic Offline Replay Mode (`SWARM_DEMO_MODE=golden`)**: Updated `MockRunner` in `sidecar/mock_runner.py` and WebSocket connection logic in `sidecar/main.py`. When enabled, the sidecar streams directly from `data/golden_run.json` with realistic or instant pacing. Zero LLM calls and zero external network calls are made.
+- **Presenter Guide & Pitch Script (`docs/DEMO.md`)**: Authored comprehensive 2-minute stage presenter script with word-for-word pitch, input actions, specific screen cues ("Notice the scribe just turned 14 agent messages into three cards", "Watch the QA bee run the real browser"), and bulletproof backup plans for Wi-Fi drops, API 500s, and provider outages.
+- **Unit Tests**: Implemented `sidecar/tests/test_golden_replay.py` validating file structure, absence of secrets, and streaming playback with `provenance: 'replay'`. Total test suite now 55/55 passing.
+
 

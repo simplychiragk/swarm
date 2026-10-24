@@ -223,11 +223,12 @@ async def websocket_endpoint(
     await broadcaster.connect(websocket, run_id=run_id, after_seq=after_seq)
 
     global mock_auto_started
-    # In mock mode, auto-trigger the mock scenario ONCE on the very first client connection.
+    # In mock or golden demo mode, auto-trigger the mock scenario ONCE on the very first client connection.
     # Do NOT auto-trigger on reconnects or subsequent connections!
-    if get_swarm_mode() == "mock" and not mock_auto_started and not mock_runner.is_running:
+    demo_mode = os.environ.get("SWARM_DEMO_MODE", "").lower()
+    if (get_swarm_mode() == "mock" or demo_mode == "golden") and not mock_auto_started and not mock_runner.is_running:
         mock_auto_started = True
-        logger.info("Initial client connected in mock mode; initiating mock scenario stream once.")
+        logger.info(f"Initial client connected (mode={get_swarm_mode()}, demo_mode={demo_mode}); initiating scenario stream once.")
         mock_runner.start(delay_seconds=1.2)
 
     try:
