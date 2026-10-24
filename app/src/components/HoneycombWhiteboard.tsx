@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import type { WhiteboardCard, EvidenceItem, CardStatus } from "../types/contracts";
 import { BeehiveMascot, getChecklistFromCards } from "./BeehiveMascot";
+import { AnimatedHoneyCard } from "./AnimatedHoneyCard";
 import {
   Sparkles,
   CheckCircle,
@@ -8,8 +9,6 @@ import {
   Activity,
   AlertTriangle,
   XCircle,
-  ExternalLink,
-  ShieldCheck,
   Filter,
   PanelLeftOpen,
 } from "lucide-react";
@@ -247,75 +246,19 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
               </div>
             </div>
 
-            {/* Cards Grid */}
+            {/* Cards Grid with Bee Entrance Animation */}
             <div className="cards-canvas-grid">
-              {filteredCards.map((card) => {
-                const isNeedsApproval = card.status === "needs_approval";
-                return (
-                  <article
-                    key={card.id}
-                    className={`honey-card honey-status-${card.status} ${
-                      isNeedsApproval ? "card-pulse-approval" : ""
-                    }`}
-                  >
-                    {/* Card Header */}
-                    <div className="honey-card-top">
-                      <div className="honey-card-tags">
-                        <span className={`lane-chip lane-${card.lane.toLowerCase()}`}>
-                          {card.lane}
-                        </span>
-                      </div>
-                      <div className={`status-pill pill-${card.status}`}>
-                        {getStatusIcon(card.status)}
-                        <span>{getStatusLabel(card.status)}</span>
-                      </div>
-                    </div>
-
-                    {/* Card Title & Plain-Language Scribe Summary */}
-                    <h3 className="honey-card-title">{card.title}</h3>
-                    <p className="honey-card-summary">{card.summary}</p>
-
-                    {/* Verified Evidence Attachments */}
-                    {card.evidence && card.evidence.length > 0 && (
-                      <div className="honey-evidence-tray">
-                        <div className="evidence-tray-label">
-                          <Sparkles size={11} />
-                          <span>TinyFish Evidence:</span>
-                        </div>
-                        <div className="evidence-items-list">
-                          {card.evidence.map((item, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              className="evidence-item-btn"
-                              onClick={() => onSelectEvidence(item, card.title)}
-                              title={`Inspect evidence: ${item.url_or_text}`}
-                            >
-                              <span className="evidence-kind-tag">{item.kind}</span>
-                              <span className="evidence-text-preview">{item.url_or_text}</span>
-                              <ExternalLink size={11} className="evidence-ext-icon" />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Interactive Approval Gate Banner if status is needs_approval */}
-                    {isNeedsApproval && (
-                      <div className="card-action-footer">
-                        <button
-                          type="button"
-                          className="retro-approval-action-btn"
-                          onClick={() => onRequestApproval(card)}
-                        >
-                          <ShieldCheck size={14} />
-                          <span>Review Approval Gate</span>
-                        </button>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
+              {filteredCards.map((card, index) => (
+                <AnimatedHoneyCard
+                  key={card.id}
+                  card={card}
+                  index={index}
+                  onSelectEvidence={onSelectEvidence}
+                  onRequestApproval={onRequestApproval}
+                  getStatusIcon={getStatusIcon}
+                  getStatusLabel={getStatusLabel}
+                />
+              ))}
             </div>
           </div>
         )}
