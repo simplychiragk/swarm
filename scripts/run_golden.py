@@ -4,7 +4,14 @@ Works cross-platform across CMD, PowerShell, and Bash without shell syntax issue
 """
 
 import os
+import sys
+from pathlib import Path
 import uvicorn
+
+# Ensure repository root is on sys.path regardless of working directory
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 if __name__ == "__main__":
     os.environ["SWARM_DEMO_MODE"] = "golden"
