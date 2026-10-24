@@ -146,6 +146,7 @@ interface BeehiveMascotProps {
   progress?: number; // 0 to 100
   checklist?: ChecklistItem[];
   onToggleItem?: (id: string) => void;
+  forceOpen?: boolean;
 }
 
 export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
@@ -155,11 +156,14 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
   progress = 0,
   checklist = DEFAULT_SWARM_MILESTONES,
   onToggleItem,
+  forceOpen = false,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const hoverTimeoutRef = useRef<number | null>(null);
   const rawId = useId();
   const id = rawId.replace(/:/g, "_");
+
+  const showPopover = isHovered || forceOpen;
 
   const scale = size === "sm" ? 0.65 : size === "lg" ? 1.3 : 1.0;
 
@@ -441,7 +445,7 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
       </div>
 
       {/* Hover Checklist Popover */}
-      {isHovered && (
+      {showPopover && (
         <div
           className={`beehive-checklist-popover popover-${size}`}
           onMouseEnter={handleMouseEnter}

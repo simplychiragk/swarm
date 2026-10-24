@@ -1310,7 +1310,8 @@ body {
   flex-direction: column;
   position: relative;
   z-index: 2;
-  overflow: hidden;
+  min-height: 0;
+  overflow: visible;
 }
 
 .whiteboard-subbar {
@@ -1319,14 +1320,23 @@ body {
   align-items: center;
   padding: 14px 20px 10px 20px;
   border-bottom: 1.5px solid rgba(216, 206, 183, 0.6);
-  background-color: rgba(251, 246, 233, 0.85);
+  background-color: rgba(251, 246, 233, 0.94);
   backdrop-filter: blur(8px);
+  position: relative;
+  z-index: 1000;
 }
 
 .whiteboard-info-group {
   display: flex;
   align-items: center;
   gap: 12px;
+  position: relative;
+  z-index: 1010;
+}
+
+.whiteboard-mini-mascot {
+  position: relative;
+  z-index: 1020;
 }
 
 .whiteboard-heading {
@@ -1387,6 +1397,8 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
   gap: 16px;
   align-content: start;
+  position: relative;
+  z-index: 1;
 }
 
 /* HONEYCOMB WHITEBOARD CARDS ("Honey") */
@@ -1618,6 +1630,7 @@ body {
   justify-content: center;
   user-select: none;
   position: relative;
+  z-index: 1050;
 }
 
 .beehive-stage {
@@ -1712,12 +1725,12 @@ body {
 /* Hover Checklist Popover */
 .beehive-checklist-popover {
   position: absolute;
-  z-index: 150;
+  z-index: 99999;
   background-color: #FAF4E6;
   border: 2px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 4px 4px 0px rgba(30, 27, 24, 0.45);
-  width: 330px;
+  box-shadow: 6px 6px 0px rgba(30, 27, 24, 0.5), 0 16px 36px rgba(30, 27, 24, 0.25);
+  width: 340px;
   max-width: 90vw;
   padding: 14px;
   display: flex;
@@ -1725,6 +1738,7 @@ body {
   gap: 10px;
   animation: checklist-popover-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: left;
+  pointer-events: auto;
 }
 
 @keyframes checklist-popover-in {
@@ -1742,17 +1756,20 @@ body {
   bottom: calc(100% - 20px);
   left: 50%;
   transform: translateX(-50%);
+  z-index: 99999;
 }
 
 .popover-sm {
-  top: calc(100% + 8px);
+  top: calc(100% + 10px);
   left: 0;
+  z-index: 99999;
 }
 
 .popover-md {
   bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
+  z-index: 99999;
 }
 
 .checklist-popover-header {
