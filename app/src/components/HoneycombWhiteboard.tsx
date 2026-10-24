@@ -11,6 +11,7 @@ import {
   ExternalLink,
   ShieldCheck,
   Filter,
+  PanelLeftOpen,
 } from "lucide-react";
 
 interface HoneycombWhiteboardProps {
@@ -20,6 +21,8 @@ interface HoneycombWhiteboardProps {
   status: "connecting" | "connected" | "disconnected";
   onTriggerRun: () => void;
   onResetBoard: () => void;
+  isSidebarOpen?: boolean;
+  onToggleSidebar?: () => void;
 }
 
 export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
@@ -29,6 +32,8 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
   status,
   onTriggerRun,
   onResetBoard,
+  isSidebarOpen = true,
+  onToggleSidebar,
 }) => {
   const [selectedLane, setSelectedLane] = useState<string>("all");
 
@@ -83,6 +88,17 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
       {/* Canvas Top Bar */}
       <div className="canvas-header-bar">
         <div className="canvas-header-left">
+          {!isSidebarOpen && onToggleSidebar && (
+            <button
+              type="button"
+              className="retro-control-btn toggle-sidebar-btn"
+              onClick={onToggleSidebar}
+              title="Show Sidebar (Ctrl+B)"
+            >
+              <PanelLeftOpen size={14} />
+              <span>Sidebar</span>
+            </button>
+          )}
           <span className="canvas-header-tag">WHITEBOARD</span>
           <div className="status-connection-badge">
             <span className={`status-indicator-dot status-${status}`} />

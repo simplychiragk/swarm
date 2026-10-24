@@ -25,12 +25,16 @@ interface SidebarProps {
   messages: FeedMessage[];
   onSendMessage: (text: string) => void;
   onOpenSettings: () => void;
+  isSidebarOpen: boolean;
+  onToggleSidebar: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   messages,
   onSendMessage,
   onOpenSettings,
+  isSidebarOpen,
+  onToggleSidebar,
 }) => {
   const [activeTab, setActiveTab] = useState<"feed" | "files">("feed");
   const [inputText, setInputText] = useState("");
@@ -118,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   });
 
   return (
-    <aside className="retro-sidebar" aria-label="Sidebar">
+    <aside className={`retro-sidebar ${!isSidebarOpen ? "collapsed" : ""}`} aria-label="Sidebar">
       {/* Top Controls Header */}
       <div className="sidebar-top-bar">
         <button
@@ -157,9 +161,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <button
           type="button"
-          className="sidebar-icon-btn"
-          onClick={() => setActiveTab((prev) => (prev === "feed" ? "files" : "feed"))}
-          title="Toggle Explorer / Feed View"
+          className="sidebar-icon-btn sidebar-collapse-btn"
+          onClick={onToggleSidebar}
+          title="Toggle Sidebar (Collapse) [Ctrl+B]"
+          aria-label="Toggle Sidebar"
         >
           <PanelLeftClose size={18} />
         </button>

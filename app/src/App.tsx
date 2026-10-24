@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSwarmWebSocket } from "./hooks/useSwarmWebSocket";
 import { Sidebar } from "./components/Sidebar";
 import { HoneycombWhiteboard } from "./components/HoneycombWhiteboard";
@@ -22,12 +22,25 @@ export function App() {
     wsUrl,
   } = useSwarmWebSocket();
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedEvidence, setSelectedEvidence] = useState<{
     item: EvidenceItem;
     cardTitle: string;
   } | null>(null);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Keyboard shortcut Ctrl+B or Cmd+B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setIsSidebarOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleRequestApproval = (card: WhiteboardCard) => {
     // If a card with needs_approval is clicked, open/restore approval prompt
@@ -45,12 +58,14 @@ export function App() {
   return (
     <div className="retro-desktop-shell">
       {/* Main Split Layout: Left Sidebar + Right Whiteboard Canvas */}
-      <div className="shell-workspace-layout">
+      <div className={`shell-workspace-layout ${!isSidebarOpen ? "sidebar-is-collapsed" : ""}`}>
         {/* Left Sidebar (Nectar Chat Feed + Project Files Explorer + User Capsule) */}
         <Sidebar
           messages={messages}
           onSendMessage={sendMessage}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          isSidebarOpen={isSidebarOpen}
+          onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         />
 
         {/* Right Whiteboard Canvas (Retro Honeycomb Board with Beehive Mascot & Cards) */}
@@ -62,6 +77,8 @@ export function App() {
             onRequestApproval={handleRequestApproval}
             onTriggerRun={triggerRun}
             onResetBoard={resetBoard}
+            isSidebarOpen={isSidebarOpen}
+            onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           />
         </main>
       </div>
