@@ -85,6 +85,24 @@ Runs real LLM inference through the provider fallback chain (NVIDIA NIM -> OpenR
 
 ---
 
+### Mode D: Golden Run Replay (Zero Keys, Presentation Safe)
+Replays the exact verified golden run offline with zero API keys and blue `[REPLAY]` badges.
+
+```powershell
+# Universal launcher (Recommended: works in CMD, PowerShell & Bash)
+python scripts/run_golden.py
+
+# Or via PowerShell:
+$env:SWARM_DEMO_MODE="golden"
+python -m uvicorn sidecar.main:app --host 127.0.0.1 --port 8000
+
+# Or via Windows Command Prompt (cmd.exe):
+set SWARM_DEMO_MODE=golden
+python -m uvicorn sidecar.main:app --host 127.0.0.1 --port 8000
+```
+
+---
+
 ## 3. Running Tests
 
 ```powershell
@@ -129,9 +147,20 @@ QABee will automatically point the TinyFish remote browser agent to `https://fun
 ## 5. Seeded-Bug Demo Mode (Fail -> Fix -> Pass)
 
 For live hackathon presentations and demos, you can activate the seeded-bug fail-fix-pass cycle:
+
 ```powershell
+# Universal launcher (Works on Command Prompt, PowerShell & Bash)
+python scripts/run_seeded_bug.py
+
+# Or via PowerShell environment variables:
 $env:SWARM_DEMO_MODE="seeded_bug"
 $env:SWARM_PERMISSION_MODE="demo"
+python -m uvicorn sidecar.main:app --port 8000
+
+# Or via Windows Command Prompt (cmd.exe):
+set SWARM_DEMO_MODE=seeded_bug
+set SWARM_PERMISSION_MODE=demo
+python -m uvicorn sidecar.main:app --port 8000
 ```
 In this mode:
 1. The Frontend Worker deliberately introduces a disabled submit button into `index.html`.

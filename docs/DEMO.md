@@ -73,7 +73,7 @@ Swarm provides three execution modes optimized for stage safety:
 
 | Failure Mode | Built-In Defense | Immediate Presenter Action |
 |---|---|---|
-| **Wi-Fi Dies / Drops on Stage** | Golden Run replay mode (`data/golden_run.json`). Zero internet required. | Stop sidecar, run `$env:SWARM_DEMO_MODE="golden"; uvicorn sidecar.main:app --port 8000`. The UI streams the exact verified run with full cards, chatter, and evidence. |
+| **Wi-Fi Dies / Drops on Stage** | Golden Run replay mode (`data/golden_run.json`). Zero internet required. | Stop sidecar and run: `python scripts/run_golden.py` (works universally on CMD & PowerShell). The UI streams the exact verified run with full cards, chatter, and evidence. |
 | **TinyFish API Timeout / 500** | Graceful fallback built into `TinyFishClient`. Returns deterministic mock payload tagged `simulated`. | No action needed! The pipeline catches it within 5s, tags the card evidence as `[SIMULATED]`, and proceeds without hanging. |
 | **LLM Provider Outage (NIM 429/500)** | Gateway multi-provider fallback chain (NVIDIA -> OpenRouter -> BYOK -> Mock). | Automatic failover occurs in <1s. If all external APIs are unreachable, set `$env:SWARM_LLM_MODE="mock"` and restart sidecar. |
 | **Browser Port Conflict** | Configurable via `SWARM_PORT` or `PORT`. | Run sidecar on alternative port e.g. `--port 8080` and point Tauri client config. |
