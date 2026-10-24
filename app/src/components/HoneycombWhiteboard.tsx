@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import type { WhiteboardCard, EvidenceItem, CardStatus } from "../types/contracts";
 import { BeehiveMascot, getChecklistFromCards } from "./BeehiveMascot";
 import {
@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Filter,
   PanelLeftOpen,
+  ArrowDownUp,
 } from "lucide-react";
 
 interface HoneycombWhiteboardProps {
@@ -36,17 +37,129 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
   onToggleSidebar,
 }) => {
   const [selectedLane, setSelectedLane] = useState<string>("all");
+  const [sortOrder, setSortOrder] = useState<"order_asc" | "order_desc">("order_asc");
   const [isProgressPillHovered, setIsProgressPillHovered] = useState(false);
 
   // Local state for manually toggled items if user checks them off in popover
   const [manualChecklistOverrides, setManualChecklistOverrides] = useState<Record<string, "done" | "planned">>({});
 
-  // Reset manual overrides if board resets
+  // Card update order tracking
+  const orderMapRef = useRef<Map<string, {
+    order: number;
+    latestUpdateSeq: number;
+    updateCount: number;
+    lastUpdatedAt: string;
+    lastSignature: string;
+  }>>(new Map());
+  const globalSeqRef = useRef<number>(0);
+  const [orderMap, setOrderMap] = useState<Record<string, {
+    order: number;
+    latestUpdateSeq: number;
+    updateCount: number;
+    lastUpdatedAt: string;
+  }>>({});
+
+  // Reset manual overrides and order counter if board resets
   useEffect(() => {
     if (cards.length === 0) {
       setManualChecklistOverrides({});
+      orderMapRef.current.clear();
+      globalSeqRef.current = 0;
+      setOrderMap({});
     }
   }, [cards.length]);
+
+  // Track order in which cards are created and updated
+  useEffect(() => {
+    if (cards.length === 0) return;
+
+    let hasChanges = false;
+    const currentMap = new Map(orderMapRef.current);
+
+    if (currentMap.size === 0) {
+      // Initial load: sort initial cards by updated_at ascending to establish true historical sequence
+      const sortedInitial = [...cards].sort((a, b) => {
+        const timeA = new Date(a.updated_at || 0).getTime();
+        const timeB = new Date(b.updated_at || 0).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+        return a.id.localeCompare(b.id);
+      });
+
+      sortedInitial.forEach((card) => {
+        globalSeqRef.current += 1;
+        const seq = globalSeqRef.current;
+        const signature = `${card.status}::${card.updated_at}::${card.summary}::${card.evidence?.length || 0}`;
+        currentMap.set(card.id, {
+          order: seq,
+          latestUpdateSeq: seq,
+          updateCount: 1,
+          lastUpdatedAt: card.updated_at || new Date().toISOString(),
+          lastSignature: signature,
+        });
+      });
+      hasChanges = true;
+    } else {
+      // Process incoming cards for additions or updates
+      cards.forEach((card) => {
+        const signature = `${card.status}::${card.updated_at}::${card.summary}::${card.evidence?.length || 0}`;
+        const existing = currentMap.get(card.id);
+
+        if (!existing) {
+          globalSeqRef.current += 1;
+          const seq = globalSeqRef.current;
+          currentMap.set(card.id, {
+            order: currentMap.size + 1,
+            latestUpdateSeq: seq,
+            updateCount: 1,
+            lastUpdatedAt: card.updated_at || new Date().toISOString(),
+            lastSignature: signature,
+          });
+          hasChanges = true;
+        } else if (existing.lastSignature !== signature) {
+          globalSeqRef.current += 1;
+          const seq = globalSeqRef.current;
+          currentMap.set(card.id, {
+            ...existing,
+            latestUpdateSeq: seq,
+            updateCount: existing.updateCount + 1,
+            lastUpdatedAt: card.updated_at || new Date().toISOString(),
+            lastSignature: signature,
+          });
+          hasChanges = true;
+        }
+      });
+    }
+
+    if (hasChanges) {
+      orderMapRef.current = currentMap;
+      const record: Record<string, {
+        order: number;
+        latestUpdateSeq: number;
+        updateCount: number;
+        lastUpdatedAt: string;
+      }> = {};
+      currentMap.forEach((val, key) => {
+        record[key] = {
+          order: val.order,
+          latestUpdateSeq: val.latestUpdateSeq,
+          updateCount: val.updateCount,
+          lastUpdatedAt: val.lastUpdatedAt,
+        };
+      });
+      setOrderMap(record);
+    }
+  }, [cards]);
+
+  const formatUpdateTime = (isoString?: string): string => {
+    if (!isoString) return "just now";
+    try {
+      const date = new Date(isoString);
+      if (isNaN(date.getTime())) return "just now";
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch {
+      return "just now";
+    }
+  };
 
   const { checklist: baseChecklist, progress: baseProgress, totalCount } =
     getChecklistFromCards(cards);
@@ -86,10 +199,22 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
     { id: "Ops", label: "Ops" },
   ];
 
-  const filteredCards = cards.filter((card) => {
-    if (selectedLane === "all") return true;
-    return card.lane === selectedLane;
-  });
+  const filteredCards = cards
+    .filter((card) => {
+      if (selectedLane === "all") return true;
+      return card.lane === selectedLane;
+    })
+    .sort((a, b) => {
+      const orderA = orderMap[a.id]?.order ?? 999;
+      const orderB = orderMap[b.id]?.order ?? 999;
+      const latestA = orderMap[a.id]?.latestUpdateSeq ?? 0;
+      const latestB = orderMap[b.id]?.latestUpdateSeq ?? 0;
+
+      if (sortOrder === "order_desc") {
+        return latestB - latestA;
+      }
+      return orderA - orderB;
+    });
 
   const getStatusIcon = (cardStatus: CardStatus) => {
     switch (cardStatus) {
@@ -222,20 +347,44 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
                 </div>
               </div>
 
-              <div className="lane-filters-group">
-                <span className="filter-label">
-                  <Filter size={12} /> Filter:
-                </span>
-                {lanes.map((l) => (
+              <div className="whiteboard-subbar-right">
+                <div className="order-sort-group">
+                  <span className="filter-label">
+                    <ArrowDownUp size={11} /> Order:
+                  </span>
                   <button
-                    key={l.id}
                     type="button"
-                    className={`lane-pill-filter ${selectedLane === l.id ? "active" : ""}`}
-                    onClick={() => setSelectedLane(l.id)}
+                    className={`lane-pill-filter ${sortOrder === "order_asc" ? "active" : ""}`}
+                    onClick={() => setSortOrder("order_asc")}
+                    title="Sort by Chronological Milestone Update Order (#1 to #N)"
                   >
-                    {l.label}
+                    #1 → #N
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    className={`lane-pill-filter ${sortOrder === "order_desc" ? "active" : ""}`}
+                    onClick={() => setSortOrder("order_desc")}
+                    title="Sort by Most Recently Updated First"
+                  >
+                    Latest First
+                  </button>
+                </div>
+
+                <div className="lane-filters-group">
+                  <span className="filter-label">
+                    <Filter size={11} /> Filter:
+                  </span>
+                  {lanes.map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      className={`lane-pill-filter ${selectedLane === l.id ? "active" : ""}`}
+                      onClick={() => setSelectedLane(l.id)}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -243,6 +392,13 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
             <div className="cards-canvas-grid">
               {filteredCards.map((card) => {
                 const isNeedsApproval = card.status === "needs_approval";
+                const orderInfo = orderMap[card.id] || {
+                  order: 1,
+                  latestUpdateSeq: 1,
+                  updateCount: 1,
+                  lastUpdatedAt: card.updated_at,
+                };
+
                 return (
                   <article
                     key={card.id}
@@ -253,9 +409,29 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
                     {/* Card Header */}
                     <div className="honey-card-top">
                       <div className="honey-card-tags">
+                        {/* Numbered update sequence badge */}
+                        <div
+                          className="card-order-badge"
+                          title={`Milestone Update #${orderInfo.order} • ${
+                            orderInfo.updateCount > 1
+                              ? `Updated ${orderInfo.updateCount} times (latest event #${orderInfo.latestUpdateSeq})`
+                              : "1st update event"
+                          }`}
+                        >
+                          <span className="order-badge-hash">#</span>
+                          <span className="order-badge-num">{orderInfo.order}</span>
+                        </div>
                         <span className={`lane-chip lane-${card.lane.toLowerCase()}`}>
                           {card.lane}
                         </span>
+                        {orderInfo.updateCount > 1 && (
+                          <span
+                            className="card-rev-chip"
+                            title={`Revised: latest update event #${orderInfo.latestUpdateSeq} in sequence`}
+                          >
+                            v{orderInfo.updateCount}
+                          </span>
+                        )}
                       </div>
                       <div className={`status-pill pill-${card.status}`}>
                         {getStatusIcon(card.status)}
@@ -305,6 +481,22 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
                         </button>
                       </div>
                     )}
+
+                    {/* Card Footer: Update Sequence Order & Timestamp Tracking */}
+                    <div className="card-order-footer">
+                      <span className="card-order-seq-label" title={card.updated_at}>
+                        <Clock size={10} className="text-stone-500" />
+                        <span>Update #{orderInfo.order} in queue</span>
+                        {orderInfo.updateCount > 1 && (
+                          <span className="order-multi-update">
+                            • #{orderInfo.latestUpdateSeq} latest
+                          </span>
+                        )}
+                      </span>
+                      <span className="card-timestamp-text">
+                        {formatUpdateTime(card.updated_at)}
+                      </span>
+                    </div>
                   </article>
                 );
               })}
