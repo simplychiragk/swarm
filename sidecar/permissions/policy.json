@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Swarm Permission Policy: defines deterministic safety tiers, allowlists, and execution budgets.",
+  "known_tools": [
+    "file_read",
+    "file_write",
+    "file_delete",
+    "command_run",
+    "tinyfish_search",
+    "tinyfish_fetch",
+    "tinyfish_browser_task",
+    "tunnel_deploy",
+    "git_write",
+    "git_push",
+    "feed_post",
+    "card_post"
+  ],
+  "tiers": {
+    "FORBIDDEN": {
+      "secret_patterns": [
+        "(?i)^.*\\.env.*$",
+        "(?i)^.*id_rsa.*$",
+        "(?i)^.*id_ed25519.*$",
+        "(?i)^.*\\.pem$",
+        "(?i)^.*\\.key$",
+        "(?i)^.*\\.pfx$",
+        "(?i)^.*\\.ssh.*$",
+        "(?i)^.*credential.*$",
+        "(?i)^.*secret.*$"
+      ],
+      "protected_paths": [
+        "sidecar",
+        "app",
+        "shared",
+        "policy.json",
+        ".git",
+        ".venv",
+        "docs"
+      ],
+      "privilege_elevation_commands": [
+        "sudo",
+        "su",
+        "runas",
+        "doas",
+        "setuid",
+        "chown",
+        "chmod"
+      ],
+      "pipe_to_shell_patterns": [
+        "(?i)(curl|wget|fetch|powershell|invoke-webrequest).*\\|.*(sh|bash|zsh|cmd|powershell)"
+      ]
+    },
+    "HIGH": {
+      "always_ask_tools": [
+        "file_delete",
+        "git_write",
+        "git_push",
+        "tunnel_deploy"
+      ],
+      "actions": [
+        "delete_file",
+        "delete_directory",
+        "git_write",
+        "git_push",
+        "start_tunnel",
+        "deploy_production",
+        "form_submit",
+        "purchase",
+        "network_host_first_contact",
+        "unlocked_package_install"
+      ]
+    },
+    "MEDIUM": {
+      "allowlisted_binaries": {
+        "npm": ["install", "ci", "run", "test", "build", "--version", "-v"],
+        "python": ["-m pytest", "-m unittest", "-m http.server", "-m uvicorn", "--version", "-V"],
+        "pytest": [],
+        "node": ["--version", "-v"],
+        "git": ["status", "log", "diff", "branch", "rev-parse", "show"]
+      },
+      "browser_task_new_domain": true
+    },
+    "LOW": {
+      "auto_allow_tools": [
+        "file_read",
+        "file_write",
+        "tinyfish_search",
+        "tinyfish_fetch",
+        "feed_post",
+        "card_post"
+      ]
+    }
+  },
+  "budgets": {
+    "max_total_tool_calls": 100,
+    "max_tool_calls_per_agent": 50,
+    "max_tool_calls_per_tool": {
+      "command_run": 25,
+      "tinyfish_browser_task": 5,
+      "tinyfish_search": 25,
+      "tinyfish_fetch": 25,
+      "file_write": 50,
+      "file_read": 100,
+      "file_delete": 10,
+      "tunnel_deploy": 5,
+      "git_write": 10,
+      "git_push": 5
+    },
+    "max_tinyfish_calls": 30,
+    "max_command_runs": 25,
+    "max_wall_clock_per_command_s": 30,
+    "default_approval_timeout_s": 120
+  }
+}
