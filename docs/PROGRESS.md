@@ -5,7 +5,7 @@
 | Stage | Description | Status |
 |---|---|---|
 | Stage 1 | Contract bidirectional extensions, SWARM_MODE handling & RunManager interface | done |
-| Stage 2 | LLM Gateway with provider fallback chain, JSON schemas & tests | planned |
+| Stage 2 | LLM Gateway with provider fallback chain, JSON schemas & tests | done |
 | Stage 3 | Multi-agent engine (Queen, Workers, Scribe) on async message bus | planned |
 | Stage 4 | TinyFish Search, Fetch & Browser QA tools integration | planned |
 
@@ -57,3 +57,49 @@
 ### 5. What Is Not Done
 - Real LLM completions via provider fallback chain (scheduled for Stage 2).
 - Agent execution loop with Queen, Workers and Scribe (scheduled for Stage 3).
+
+---
+
+## Stage 2: LLM Gateway with Provider Fallback Chain
+
+### 1. What Was Built
+- Implemented `sidecar/llm/` with public entry point `complete(messages, *, tier="fast", json_schema=None, timeout=30) -> LLMResult`.
+- Configured provider fallback chain in `sidecar/llm/config.py`:
+  1. NVIDIA NIM (`https://integrate.api.nvidia.com/v1`)
+  2. OpenRouter free tier (`https://openrouter.ai/api/v1`)
+  3. Bring-Your-Own-Key (BYOK) provider
+  4. Deterministic offline mock provider (`sidecar/llm/mock_provider.py`)
+- Implemented request retries (up to 2 attempts on 429 rate limits), fall-through on 5xx/timeouts/empty responses, and `ProviderHealthTracker` with 60-second cooldown windows after 3 consecutive errors.
+- Added structured JSON schema output validation and automatic single-turn repair prompt recovery.
+- Added standalone CLI smoke test (`python -m sidecar.llm.smoke "hello"`).
+- Added comprehensive pytest test suite covering fallback order, 429 retries, timeout fall-through, JSON repair, and mock mode.
+- Authored `sidecar/llm/README.md` and updated `docs/ARCHITECTURE.md`.
+
+### 2. Files Added or Changed
+- Added:
+  - `sidecar/llm/__init__.py`
+  - `sidecar/llm/types.py`
+  - `sidecar/llm/config.py`
+  - `sidecar/llm/mock_provider.py`
+  - `sidecar/llm/gateway.py`
+  - `sidecar/llm/smoke.py`
+  - `sidecar/llm/README.md`
+  - `sidecar/tests/__init__.py`
+  - `sidecar/tests/llm/__init__.py`
+  - `sidecar/tests/llm/test_gateway.py`
+  - `docs/ARCHITECTURE.md`
+- Changed:
+  - `sidecar/requirements.txt` (added `httpx`, `pytest`, `pytest-asyncio` for HTTP gateway and test runner)
+  - `docs/PROGRESS.md`
+
+### 3. How to Run and Test
+- Run tests: `.venv\Scripts\pytest sidecar/tests/llm`
+- Run smoke test: `.venv\Scripts\python -m sidecar.llm.smoke "Hello Swarm"`
+
+### 4. Assumptions Made
+- Both NVIDIA NIM and OpenRouter support OpenAI-compatible `/chat/completions` REST endpoints with bearer token auth and `response_format={"type": "json_object"}`.
+- If no provider API keys are set or `SWARM_LLM_MODE=mock`, requests smoothly fall back to deterministic mock completions rather than throwing errors.
+
+### 5. What Is Not Done
+- In-process agent message bus and orchestration engine (scheduled for Stage 3).
+- TinyFish live tool integration (scheduled for Stage 4).
