@@ -36,6 +36,7 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
   onToggleSidebar,
 }) => {
   const [selectedLane, setSelectedLane] = useState<string>("all");
+  const [isProgressPillHovered, setIsProgressPillHovered] = useState(false);
 
   // Local state for manually toggled items if user checks them off in popover
   const [manualChecklistOverrides, setManualChecklistOverrides] = useState<Record<string, "done" | "planned">>({});
@@ -205,12 +206,19 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
                     progress={progress}
                     checklist={checklist}
                     onToggleItem={handleToggleChecklistItem}
+                    forceOpen={isProgressPillHovered}
                   />
                 </div>
                 <div>
                   <div className="whiteboard-title-row">
                     <h2 className="whiteboard-heading">Honeycomb Whiteboard</h2>
-                    <div className="honey-progress-pill" title="Hover beehive to view remaining checklist">
+                    <div
+                      className="honey-progress-pill"
+                      title="Hover beehive to view remaining checklist"
+                      onMouseEnter={() => setIsProgressPillHovered(true)}
+                      onMouseLeave={() => setIsProgressPillHovered(false)}
+                      onClick={() => setIsProgressPillHovered((prev) => !prev)}
+                    >
                       <span className="honey-drop-emoji">🍯</span>
                       <span className="honey-progress-pct">{progress}% Honey</span>
                       <span className="honey-progress-sub">({completedCount}/{totalCount} Done)</span>
