@@ -1,0 +1,171 @@
+# Swarm WebSocket Event Contract
+
+All communication between the Tauri/React desktop app and the FastAPI sidecar occurs over the WebSocket endpoint:
+`ws://127.0.0.1:8000/ws`
+
+Every message is wrapped in an `EventEnvelope`:
+```json
+{
+  "event": "<event_name>",
+  "payload": { ... }
+}
+```
+
+---
+
+## Event Summary Table
+
+| Event Name | Direction | Description |
+|---|---|---|
+| `feed_message` | Server -> Client | Live agent chatter, tasks, status, evidence, or errors |
+| `card_upsert` | Server -> Client | Honeycomb whiteboard summary card creation or update |
+| `approval_request` | Server -> Client | User authorization gate triggered by queen or decision layer |
+| `user_message` | Client -> Server | User chat, answer to interview question, or instruction |
+| `approval_response` | Client -> Server | User decision on an active approval request |
+
+---
+
+## Detailed Event Specifications
+
+### 1. `feed_message` (Server -> Client)
+Raw message passing through the live swarm feed ("nectar").
+
+#### Fields:
+- `id` (string, required): Unique UUID for the message.
+- `timestamp` (string, required): ISO 8601 formatted timestamp.
+- `sender` (enum, required): `"queen"` | `"worker"` | `"scribe"` | `"qa"` | `"research"` | `"system"`
+- `lane` (enum, required): `"FE"` | `"BE"` | `"DB"` | `"Design"` | `"Test"` | `"Docs"` | `"Ops"` | `"none"`
+- `type` (enum, required): `"chat"` | `"task"` | `"status"` | `"evidence"` | `"error"`
+- `content` (string, required): Text content of the message.
+- `metadata` (object, optional): Arbitrary metadata key-values (tool name, query, duration, etc.).
+
+#### Example:
+```json
+{
+  "event": "feed_message",
+  "payload": {
+    "id": "msg-101",
+    "timestamp": "2026-10-24T12:00:00.000Z",
+    "sender": "worker",
+    "lane": "FE",
+    "type": "chat",
+    "content": "FE Worker: Scaffolding waitlist hero section with responsive Tailwind inputs.",
+    "metadata": {
+      "framework": "react",
+      "component": "WaitlistHero"
+    }
+  }
+}
+```
+
+---
+
+### 2. `card_upsert` (Server -> Client)
+Synthesized progress cards posted by the Scribe to the Honeycomb Whiteboard ("honey").
+
+#### Fields:
+- `id` (string, required): Unique card identifier (e.g. `card-fe-hero`).
+- `title` (string, required): Concise headline for the whiteboard card.
+- `summary` (string, required): Plain-language summary of completed or ongoing work.
+- `status` (enum, required): `"planned"` | `"in_progress"` | `"done"` | `"needs_approval"` | `"failed"`
+- `lane` (enum, required): `"FE"` | `"BE"` | `"DB"` | `"Design"` | `"Test"` | `"Docs"` | `"Ops"` | `"none"`
+- `evidence` (array of objects, optional): Verification items, each having:
+  - `kind` (string, required): Evidence category (e.g. `"screenshot"`, `"api_call"`, `"test_log"`).
+  - `url_or_text` (string, required): URL or textual detail.
+- `updated_at` (string, required): ISO 8601 timestamp of update.
+
+#### Example:
+```json
+{
+  "event": "card_upsert",
+  "payload": {
+    "id": "card-qa-1",
+    "title": "Browser QA Verification (TinyFish)",
+    "summary": "Form submission verified in a real browser session. Status 201 received.",
+    "status": "done",
+    "lane": "Test",
+    "evidence": [
+      {
+        "kind": "screenshot",
+        "url_or_text": "https://tinyfish-demo.s3.amazonaws.com/evidence/waitlist.png"
+      }
+    ],
+    "updated_at": "2026-10-24T12:02:15.000Z"
+  }
+}
+```
+
+---
+
+### 3. `approval_request` (Server -> Client)
+Presents a critical action to the user for interactive sign-off.
+
+#### Fields:
+- `id` (string, required): Unique identifier for the approval request.
+- `card_id` (string, required): WhiteboardCard ID awaiting sign-off.
+- `prompt` (string, required): Question or decision displayed to user.
+- `options` (array of strings, required): Button choices (e.g. `["Approve", "Redirect"]`).
+- `lane` (enum, required): `"FE"` | `"BE"` | `"DB"` | `"Design"` | `"Test"` | `"Docs"` | `"Ops"` | `"none"`
+- `card` (object, optional): Embedded snapshot of the target WhiteboardCard.
+- `created_at` (string, required): ISO 8601 timestamp when request was generated.
+
+#### Example:
+```json
+{
+  "event": "approval_request",
+  "payload": {
+    "id": "appr-deploy-99",
+    "card_id": "card-approval",
+    "prompt": "TinyFish browser QA passed. Approve publishing landing page live to production?",
+    "options": ["Approve & Deploy Live", "Request Revision", "Reject"],
+    "lane": "Ops",
+    "created_at": "2026-10-24T12:03:00.000Z"
+  }
+}
+```
+
+---
+
+### 4. `user_message` (Client -> Server)
+Inbound message sent from the user via the desktop client UI.
+
+#### Fields:
+- `id` (string, required): Unique client message ID.
+- `text` (string, required): User's prompt, answer, or instruction.
+- `timestamp` (string, required): ISO 8601 timestamp from client.
+
+#### Example:
+```json
+{
+  "event": "user_message",
+  "payload": {
+    "id": "user-msg-1",
+    "text": "Target audience is developers; use dark mode with honeycomb patterns; capture name and email.",
+    "timestamp": "2026-10-24T12:00:30.000Z"
+  }
+}
+```
+
+---
+
+### 5. `approval_response` (Client -> Server)
+Inbound user response resolving an active approval request.
+
+#### Fields:
+- `approval_id` (string, required): Identifier of the approval request being answered.
+- `card_id` (string, required): Associated WhiteboardCard ID.
+- `decision` (enum, required): `"approve"` | `"redirect"`
+- `note` (string, optional): Context or revision instructions if redirected.
+
+#### Example:
+```json
+{
+  "event": "approval_response",
+  "payload": {
+    "approval_id": "appr-deploy-99",
+    "card_id": "card-approval",
+    "decision": "approve",
+    "note": "Looks great, deploy immediately."
+  }
+}
+```

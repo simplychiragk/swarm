@@ -7,10 +7,17 @@ from .contracts import (
     FeedMessage,
     WhiteboardCard,
     ApprovalRequest,
+    UserMessage,
+    ApprovalResponse,
     FeedMessageEnvelope,
     CardUpsertEnvelope,
     ApprovalRequestEnvelope,
+    UserMessageEnvelope,
+    ApprovalResponseEnvelope,
     EventEnvelope,
+    InboundEnvelope,
+    parse_event_envelope,
+    parse_inbound_envelope,
 )
 
 __all__ = [
@@ -22,8 +29,15 @@ __all__ = [
     "FeedMessage",
     "WhiteboardCard",
     "ApprovalRequest",
+    "UserMessage",
+    "ApprovalResponse",
     "FeedMessageEnvelope",
     "CardUpsertEnvelope",
     "ApprovalRequestEnvelope",
+    "UserMessageEnvelope",
+    "ApprovalResponseEnvelope",
     "EventEnvelope",
+    "InboundEnvelope",
+    "parse_event_envelope",
+    "parse_inbound_envelope",
 ]

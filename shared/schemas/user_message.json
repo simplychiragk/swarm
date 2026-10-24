@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm.hack/schemas/user_message.json",
+  "title": "UserMessage",
+  "description": "Client-to-server user input message sent across the live WebSocket",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the user message"
+    },
+    "text": {
+      "type": "string",
+      "description": "Raw text input from the user"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when user submitted the message"
+    }
+  },
+  "required": ["id", "text", "timestamp"],
+  "additionalProperties": false
+}

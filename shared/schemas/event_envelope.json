@@ -2,12 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://swarm.hack/schemas/event_envelope.json",
   "title": "EventEnvelope",
-  "description": "Standard WebSocket envelope sent from sidecar to client app",
+  "description": "Standard WebSocket envelope exchanged between sidecar and client app in both directions",
   "type": "object",
   "properties": {
     "event": {
       "type": "string",
-      "enum": ["feed_message", "card_upsert", "approval_request"],
+      "enum": [
+        "feed_message",
+        "card_upsert",
+        "approval_request",
+        "user_message",
+        "approval_response"
+      ],
       "description": "Event channel name"
     },
     "payload": {
@@ -15,7 +21,9 @@
       "oneOf": [
         { "$ref": "./feed_message.json" },
         { "$ref": "./whiteboard_card.json" },
-        { "$ref": "./approval_request.json" }
+        { "$ref": "./approval_request.json" },
+        { "$ref": "./user_message.json" },
+        { "$ref": "./approval_response.json" }
       ]
     }
   },

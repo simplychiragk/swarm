@@ -4,8 +4,8 @@ Directly aligned with shared/schemas/ and shared/types/contracts.ts
 """
 
 from enum import Enum
-from typing import Optional, List, Dict, Any, Union, Literal
-from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any, Union, Literal, Annotated
+from pydantic import BaseModel, Field, TypeAdapter
 
 
 class AgentSender(str, Enum):
@@ -79,6 +79,19 @@ class ApprovalRequest(BaseModel):
     created_at: str = Field(..., description="ISO 8601 string")
 
 
+class UserMessage(BaseModel):
+    id: str
+    text: str
+    timestamp: str = Field(..., description="ISO 8601 string")
+
+
+class ApprovalResponse(BaseModel):
+    approval_id: str
+    card_id: str
+    decision: Literal["approve", "redirect"]
+    note: Optional[str] = None
+
+
 class FeedMessageEnvelope(BaseModel):
     event: Literal["feed_message"] = "feed_message"
     payload: FeedMessage
@@ -94,4 +107,44 @@ class ApprovalRequestEnvelope(BaseModel):
     payload: ApprovalRequest
 
 
-EventEnvelope = Union[FeedMessageEnvelope, CardUpsertEnvelope, ApprovalRequestEnvelope]
+class UserMessageEnvelope(BaseModel):
+    event: Literal["user_message"] = "user_message"
+    payload: UserMessage
+
+
+class ApprovalResponseEnvelope(BaseModel):
+    event: Literal["approval_response"] = "approval_response"
+    payload: ApprovalResponse
+
+
+EventEnvelope = Annotated[
+    Union[
+        FeedMessageEnvelope,
+        CardUpsertEnvelope,
+        ApprovalRequestEnvelope,
+        UserMessageEnvelope,
+        ApprovalResponseEnvelope,
+    ],
+    Field(discriminator="event"),
+]
+
+InboundEnvelope = Annotated[
+    Union[
+        UserMessageEnvelope,
+        ApprovalResponseEnvelope,
+    ],
+    Field(discriminator="event"),
+]
+
+_event_adapter = TypeAdapter(EventEnvelope)
+_inbound_adapter = TypeAdapter(InboundEnvelope)
+
+
+def parse_event_envelope(raw_json: Union[str, bytes]) -> EventEnvelope:
+    """Parse and validate any EventEnvelope string."""
+    return _event_adapter.validate_json(raw_json)
+
+
+def parse_inbound_envelope(raw_json: Union[str, bytes]) -> InboundEnvelope:
+    """Parse and validate a client-to-server EventEnvelope."""
+    return _inbound_adapter.validate_json(raw_json)

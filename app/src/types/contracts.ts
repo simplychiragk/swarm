@@ -46,7 +46,25 @@ export interface ApprovalRequest {
   created_at: string; // ISO 8601
 }
 
-export type WebSocketEventType = 'feed_message' | 'card_upsert' | 'approval_request';
+export interface UserMessage {
+  id: string;
+  text: string;
+  timestamp: string; // ISO 8601
+}
+
+export interface ApprovalResponse {
+  approval_id: string;
+  card_id: string;
+  decision: 'approve' | 'redirect';
+  note?: string;
+}
+
+export type WebSocketEventType =
+  | 'feed_message'
+  | 'card_upsert'
+  | 'approval_request'
+  | 'user_message'
+  | 'approval_response';
 
 export type EventEnvelope =
   | {
@@ -60,4 +78,12 @@ export type EventEnvelope =
   | {
       event: 'approval_request';
       payload: ApprovalRequest;
+    }
+  | {
+      event: 'user_message';
+      payload: UserMessage;
+    }
+  | {
+      event: 'approval_response';
+      payload: ApprovalResponse;
     };

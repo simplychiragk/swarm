@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm.hack/schemas/approval_response.json",
+  "title": "ApprovalResponse",
+  "description": "Client-to-server user decision on an approval gate",
+  "type": "object",
+  "properties": {
+    "approval_id": {
+      "type": "string",
+      "description": "Identifier of the approval request being resolved"
+    },
+    "card_id": {
+      "type": "string",
+      "description": "Target WhiteboardCard ID affected by the approval decision"
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["approve", "redirect"],
+      "description": "User resolution choice"
+    },
+    "note": {
+      "type": "string",
+      "description": "Optional user feedback, guidance or redirect notes"
+    }
+  },
+  "required": ["approval_id", "card_id", "decision"],
+  "additionalProperties": false
+}
