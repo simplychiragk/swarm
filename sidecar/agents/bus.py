@@ -247,7 +247,10 @@ class MessageBus:
             evidence=[EvidenceItem(kind="decision", url_or_text=f"Agreed by: {', '.join(agreed_by)}")],
             updated_at=now_iso(),
         )
-        await self.publish_card_upsert(card, provenance=provenance)
+        try:
+            await self.publish_card_upsert(card, provenance=provenance)
+        except TypeError:
+            await self.publish_card_upsert(card)
 
     async def publish_agent_status(
         self,

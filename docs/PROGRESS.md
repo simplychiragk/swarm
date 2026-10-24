@@ -10,8 +10,8 @@
 | Stage 3 | Permission layer (deterministic policy, tiers, escalation, safe command/path, audit) | done |
 | Stage 4 | Real-time agent chat (channels, threads, intents, decision board, concurrent agent tasks) | done |
 | Stage 5 | TinyFish for real (Search, Fetch, browser agent, ResearchBee grounding, smoke script) | done |
-| Stage 6 | Workers build real project (served locally, optional tunnel, seeded-bug mode) | not started |
-| Stage 7 | QA bee & verify loop (browser test, fail/fix/pass, 2 retry cap, approval gate) | not started |
+| Stage 6 | Workers build real project (served locally, optional tunnel, seeded-bug mode) | done |
+| Stage 7 | QA bee & verify loop (browser test, fail/fix/pass, 2 retry cap, approval gate) | done |
 | Stage 8 | End-to-end hardening of core path (live runs, pacing, provenance summary card) | not started |
 | Stage 9 | Demo safety (golden run recorder, offline demo mode, DEMO.md script) | not started |
 | Stage 10 | Steering running swarm (steer, queue, interrupt, plan diff, receipts) | not started |
@@ -127,6 +127,46 @@
   - Automated smoke test executing Search, Fetch, and Browser Agent against `example.com` or live API.
   - Measures execution latency per step and writes full audit evidence to `data/qa_smoke.json`.
 - **Unit Tests**: Updated `sidecar/tests/tools/test_tinyfish.py` with 6 unit tests covering mock fallbacks, evidence cards, and plan grounding proposals. Full test suite now 47/47 passing.
+
+---
+
+## Stage 6: Workers Build Real Project, Serving & Seeded-Bug Demo Mode
+
+### 1. What Was Built
+- **Real Workspace Files Generated in `workspace/<run_id>/`**:
+  - `index.html`: Fully semantic HTML5 landing page with hero, waitlist form (name, email, role dropdown, submit button), and toast notification.
+  - `style.css`: Clean dark honeycomb theme adhering to 8px grid, CSS variables, and accessibility (`prefers-reduced-motion`).
+  - `app.js`: Client-side submit listener validating inputs, submitting via `fetch()` to `/api/waitlist`, and rendering confirmation banner with assigned queue number `#42`.
+  - `api/main.py`: Real FastAPI waitlist submission endpoint with Pydantic email validation.
+- **Sidecar Preview Serving (`GET /runs/{run_id}/preview/`)**:
+  - Direct local HTTP preview endpoint serving HTML, CSS, JS, and image assets securely using `resolve_safe_path`.
+  - Dedicated waitlist submission handler at `POST /runs/{run_id}/api/waitlist` and `POST /api/waitlist` returning 201 Created and queue position.
+- **Public Tunnel Support**:
+  - Added operational runbook guide for `localtunnel`, `cloudflared`, and `ngrok` so cloud-based TinyFish browser agents can inspect local previews.
+  - Configurable via `SWARM_PREVIEW_URL`.
+- **Seeded-Bug Demo Mode (`SWARM_DEMO_MODE=seeded_bug`)**:
+  - FE Worker deliberately introduces a disabled submit button into `index.html` on initial build.
+  - When fix task is received from Queen, `fe_worker.apply_fix()` rewrites the file, enabling the button and restoring form handlers.
+- **Unit Tests**: Added `sidecar/tests/agents/test_worker_build.py` (3 tests verifying real file generation, preview serving, waitlist submission API, and seeded bug introduction).
+
+---
+
+## Stage 7: QA Bee Automated Verification Loop & Failure Routing
+
+### 1. What Was Built
+- **QABee Browser Verification Loop**:
+  - Dispatches TinyFish browser agent against preview URL (`/runs/{run_id}/preview/` or tunnel).
+  - Evaluates form inputs, submission response, and toast banner visibility.
+  - Captures screenshot and browser log evidence, posting cards to the Honeycomb Whiteboard.
+- **Queen Failure Routing (`route_qa_failure`)**:
+  - When QA reports `FAIL`, Queen analyzes failure details (404/route -> BE Worker; button/disabled/form -> FE Worker).
+  - Emits targeted fix assignment to responsible worker in channel `qa`.
+  - Cap of 2 retries: if failures exceed 2 retries, Queen halts and emits an emergency `card-qa-emergency` gate with status `needs_approval`.
+- **Worker Auto-Fix Loop (`apply_fix`)**:
+  - Targeted worker applies corrections in `workspace/<run_id>/` and reports readiness for retest in channel `qa`.
+- **Full Fail -> Fix -> Pass Verification**:
+  - Tested end-to-end with seeded-bug mode: initial run fails, Queen delegates fix to FE worker, worker re-generates enabled button, retest passes with `verdict: PASS`!
+- **Unit Tests**: Added `sidecar/tests/agents/test_qa_loop.py` (3 tests covering clean pass, complete fail->fix->pass loop, and retry limit emergency gate). Total suite now 53/53 passing.
 
 ---
 

@@ -549,6 +549,77 @@ def build_workspace_tree(run_id: str) -> Dict[str, Any]:
     }
 
 
+class WaitlistSubmission(BaseModel):
+    name: str = "Developer"
+    email: str = "dev@example.com"
+    role: str = "Engineer"
+
+
+@app.post("/runs/{run_id}/api/waitlist", status_code=201)
+@app.post("/runs/{run_id}/preview/api/waitlist", status_code=201)
+@app.post("/api/waitlist", status_code=201)
+async def submit_waitlist_endpoint(
+    req: WaitlistSubmission,
+    run_id: str = "run-default",
+):
+    """
+    Form submission handler receiving waitlist POST requests.
+    Returns 201 Created with assigned queue position.
+    """
+    return {
+        "status": "success",
+        "id": f"wl-{uuid.uuid4().hex[:6]}",
+        "queue_position": 42,
+        "message": f"Welcome {req.name}! You are #42 on the waitlist.",
+        "name": req.name,
+        "email": req.email,
+        "role": req.role,
+    }
+
+
+@app.get("/runs/{run_id}/preview")
+@app.get("/runs/{run_id}/preview/{subpath:path}")
+async def preview_run_endpoint(run_id: str = "run-default", subpath: str = ""):
+    """
+    Serves the live built landing page and assets directly from workspace/<run_id>/.
+    Defaults to index.html if subpath is empty or points to a directory.
+    """
+    from fastapi.responses import FileResponse
+    from fastapi import HTTPException
+    from sidecar.permissions import resolve_safe_path, PathSafetyError
+
+    target = subpath.strip("/")
+    if not target or target.endswith("/"):
+        target = f"{target}/index.html" if target else "index.html"
+
+    ALLOWED_CONTENT_TYPES = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".svg": "image/svg+xml",
+        ".html": "text/html",
+        ".htm": "text/html",
+        ".json": "application/json",
+        ".txt": "text/plain",
+        ".css": "text/css",
+        ".js": "application/javascript",
+    }
+
+    try:
+        file_path = resolve_safe_path(run_id, target, must_exist=True)
+    except FileNotFoundError:
+        try:
+            file_path = resolve_safe_path(run_id, "index.html", must_exist=True)
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"Preview file '{target}' not found in run workspace.")
+    except (PathSafetyError, PermissionError) as pe:
+        raise HTTPException(status_code=403, detail=f"Permission Denied: {pe}")
+
+    ext = file_path.suffix.lower()
+    media_type = ALLOWED_CONTENT_TYPES.get(ext, "application/octet-stream")
+    return FileResponse(path=file_path, media_type=media_type)
+
+
 @app.get("/workspace/tree")
 @app.get("/runs/{run_id}/tree")
 async def get_workspace_tree_endpoint(run_id: str = "run-default"):

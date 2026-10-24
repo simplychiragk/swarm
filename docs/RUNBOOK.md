@@ -97,7 +97,53 @@ python -m sidecar.llm.smoke "Hello Swarm"
 
 ---
 
-## 4. Resetting State
+## 4. Public Tunneling for TinyFish Remote Browser QA
+
+The TinyFish remote browser agent executes in the cloud. To allow TinyFish to test locally built pages, expose port 8000 using any standard tunneling utility:
+
+### Option A: LocalTunnel (No account required)
+```powershell
+npx localtunnel --port 8000
+# Output: your url is: https://funny-otter-42.loca.lt
+```
+
+### Option B: Cloudflare Tunnel (cloudflared)
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+### Option C: ngrok
+```powershell
+ngrok http 8000
+```
+
+### Configuring Swarm to use the Tunnel:
+Set the tunnel URL in your environment before starting the sidecar:
+```powershell
+$env:SWARM_PREVIEW_URL="https://funny-otter-42.loca.lt"
+```
+QABee will automatically point the TinyFish remote browser agent to `https://funny-otter-42.loca.lt/runs/{id}/preview/` to execute real remote browser assertions and capture screenshots.
+
+---
+
+## 5. Seeded-Bug Demo Mode (Fail -> Fix -> Pass)
+
+For live hackathon presentations and demos, you can activate the seeded-bug fail-fix-pass cycle:
+```powershell
+$env:SWARM_DEMO_MODE="seeded_bug"
+$env:SWARM_PERMISSION_MODE="demo"
+```
+In this mode:
+1. The Frontend Worker deliberately introduces a disabled submit button into `index.html`.
+2. QABee tests the live preview, detects the disabled button, and reports `FAIL` with screenshot evidence.
+3. The Queen identifies the failure, routes a fix task to `fe_worker` in channel `qa`.
+4. `fe_worker` fixes `index.html` removing the disabled attribute.
+5. QABee automatically re-tests, passes the assertion, and marks the task `PASS`.
+6. Queen proceeds to the human release gate.
+
+---
+
+## 6. Resetting State
 
 ```powershell
 # Reset WebSocket history and stop active runs

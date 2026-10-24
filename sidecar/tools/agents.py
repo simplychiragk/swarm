@@ -198,6 +198,23 @@ class QABee(BaseAgent):
         verdict = res.get("verdict", "PASS").upper()
         details = res.get("details", "Browser assertions completed.")
 
+        # Seeded-bug demo mode inspection
+        import os
+        from sidecar.permissions import resolve_safe_path
+        if os.environ.get("SWARM_DEMO_MODE", "").lower() == "seeded_bug":
+            try:
+                html_path = resolve_safe_path(run_id, "index.html", must_exist=True)
+                content = html_path.read_text(encoding="utf-8", errors="replace")
+                if 'id="submit-btn" disabled' in content or ('submit-btn' in content and 'disabled' in content):
+                    verdict = "FAIL"
+                    details = "Browser QA failed: Waitlist submit button has 'disabled' attribute; user cannot submit form."
+                    res["evidence"] = [
+                        {"kind": "screenshot", "url_or_text": "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-fail.png"},
+                        {"kind": "browser_error", "url_or_text": details},
+                    ]
+            except Exception:
+                pass
+
         evidence_items: List[EvidenceItem] = []
         raw_evidence = res.get("evidence", [])
         if isinstance(raw_evidence, list):
@@ -208,7 +225,8 @@ class QABee(BaseAgent):
             evidence_items.append(EvidenceItem(kind=raw_evidence.get("kind", "screenshot"), url_or_text=raw_evidence.get("url_or_text", "")))
 
         if not evidence_items:
-            evidence_items.append(EvidenceItem(kind="screenshot", url_or_text="https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"))
+            screenshot_url = "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-fail.png" if verdict == "FAIL" else "https://tinyfish-artifacts.s3.amazonaws.com/evidence/waitlist-pass.png"
+            evidence_items.append(EvidenceItem(kind="screenshot", url_or_text=screenshot_url))
 
         card_status = CardStatus.DONE if verdict == "PASS" else CardStatus.FAILED
 

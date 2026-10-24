@@ -178,6 +178,58 @@ class QueenAgent(BaseAgent):
                 content="Queen: Plan distributed to worker lanes. Parallel build commenced.",
             )
 
+    async def route_qa_failure(
+        self,
+        qa_result: Dict[str, Any],
+        retry_count: int = 1,
+        max_retries: int = 2,
+    ) -> str:
+        """
+        Analyzes QA failure evidence, identifies responsible worker (FE vs BE),
+        and emits targeted fix instructions in channel 'qa'.
+        """
+        details = str(qa_result.get("details", "")).lower()
+        error = str(qa_result.get("error", "")).lower()
+        combined = f"{details} {error}"
+
+        if "404" in combined or "endpoint" in combined or "route" in combined or "backend" in combined:
+            responsible_worker = "be_worker"
+            responsible_lane = Lane.BE
+            fix_instruction = "Fix API endpoint routing and verify POST /api/waitlist returns 201."
+        else:
+            responsible_worker = "fe_worker"
+            responsible_lane = Lane.FE
+            fix_instruction = "Ensure submit button is enabled and form handles submit properly."
+
+        if retry_count > max_retries:
+            logger.warning(f"QA failed after {retry_count - 1} retries. Emitting emergency approval card.")
+            await self.emit_card_upsert(
+                card_id="card-qa-emergency",
+                title="QA Failure - Manual Override Required",
+                summary=f"Automated verification failed after {retry_count - 1} retries: {qa_result.get('details')}",
+                status=CardStatus.NEEDS_APPROVAL,
+                lane=Lane.OPS,
+            )
+            await self.emit_approval_request(
+                request_id=f"approval-emergency-{retry_count}",
+                card_id="card-qa-emergency",
+                prompt=f"QA verification failed {max_retries} attempts ({qa_result.get('details')}). Authorize manual override or halt?",
+                options=["Override & Deploy", "Halt Execution"],
+                lane=Lane.OPS,
+            )
+            return "emergency_gate"
+
+        await self.emit_feed_message(
+            msg_type=MessageType.TASK,
+            content=f"Queen -> @{responsible_worker}: QA validation failed (Attempt {retry_count}/{max_retries}): {qa_result.get('details')}. {fix_instruction}",
+            channel="qa",
+            to=responsible_worker,
+            mentions=[responsible_worker],
+            lane=responsible_lane,
+            requires_response=True,
+        )
+        return responsible_worker
+
     async def process_message(self, message: FeedMessage) -> None:
         """Monitor feed messages to update worker health timestamps."""
         if message.sender == AgentSender.WORKER:

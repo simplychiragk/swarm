@@ -42,7 +42,8 @@ class SwarmRunManager(RunManager):
         self.global_timeout_seconds = global_timeout_seconds
         self.llm_call_count = 0
         self.decision_layer = RuleBasedDecisionLayer()
-        self.bus = MessageBus()
+        self.run_id = "run-default"
+        self.bus = MessageBus(run_id=self.run_id)
 
         self.queen: Optional[QueenAgent] = None
         self.be_worker: Optional[WorkerAgent] = None
@@ -132,7 +133,7 @@ class SwarmRunManager(RunManager):
             # If enabled, Research Bee gathers live web specs prior to worker build
             if self.enable_tinyfish and self.research_bee:
                 await asyncio.sleep(0.5)
-                await self.research_bee.execute_research("best practice waitlist form fields 2026")
+                await self.research_bee.execute_research("best practice waitlist form fields 2026", run_id=self.run_id)
 
             # 2. Parallel construction: BE Worker and FE Worker execute tasks
             await asyncio.sleep(1.0)
@@ -140,6 +141,7 @@ class SwarmRunManager(RunManager):
                 task_id="task-be-api",
                 title="FastAPI Waitlist Submission Endpoint",
                 description="Construct POST /api/waitlist route with Pydantic email validation",
+                run_id=self.run_id,
             )
 
             await asyncio.sleep(1.0)
@@ -147,14 +149,44 @@ class SwarmRunManager(RunManager):
                 task_id="task-fe-hero",
                 title="Responsive Waitlist Hero Section",
                 description="Build dark modern UI with honeycomb styling and responsive form inputs",
+                run_id=self.run_id,
             )
 
-            # If enabled, QA Bee executes automated browser verification
+            # 3. QA Loop: automated browser verification with failure routing (max 2 retries)
             if self.enable_tinyfish and self.qa_bee:
-                await asyncio.sleep(0.5)
-                await self.qa_bee.execute_browser_verification("http://localhost:5173", "Verify waitlist form submission")
+                preview_base = os.environ.get("SWARM_PREVIEW_URL", "http://127.0.0.1:8000")
+                preview_url = f"{preview_base}/runs/{self.run_id}/preview/"
+                max_retries = 2
+                qa_pass = False
 
-            # 3. Decision Layer checks if release requires human approval
+                for attempt in range(1, max_retries + 2):
+                    await asyncio.sleep(0.5)
+                    qa_res = await self.qa_bee.execute_browser_verification(
+                        target_url=preview_url,
+                        goal="Verify waitlist form submission and confirmation banner",
+                        run_id=self.run_id,
+                    )
+
+                    if qa_res.get("verdict") == "PASS":
+                        qa_pass = True
+                        break
+
+                    # QA failed: Queen analyzes evidence and routes to responsible worker
+                    routed = await self.queen.route_qa_failure(qa_res, retry_count=attempt, max_retries=max_retries)
+                    if routed == "emergency_gate":
+                        break
+
+                    # Worker applies fix directly in workspace/<run_id>/
+                    if routed == "fe_worker" and self.fe_worker:
+                        await self.fe_worker.apply_fix(run_id=self.run_id)
+                    elif routed == "be_worker" and self.be_worker:
+                        await self.be_worker.apply_fix(run_id=self.run_id)
+
+                if not qa_pass:
+                    logger.warning("QA did not pass within retry budget.")
+                    return
+
+            # 4. Decision Layer checks if release requires human approval
             await asyncio.sleep(1.0)
             action_desc = "deploy waitlist landing page to production edge"
             needs_appr = self.decision_layer.needs_approval(action_desc)
