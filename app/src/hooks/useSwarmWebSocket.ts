@@ -14,6 +14,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
   const [messages, setMessages] = useState<FeedMessage[]>([]);
   const [cards, setCards] = useState<Record<string, WhiteboardCard>>({});
   const [activeApproval, setActiveApproval] = useState<ApprovalRequest | null>(null);
+  const [runId, setRunId] = useState<string>("run-default");
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -26,12 +27,15 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     cardsRef.current = cards;
   }, [cards]);
 
+  const effectiveWsUrl = url.includes("?") ? url : `${url}?run_id=${runId}`;
+
   const connect = useCallback(() => {
-    // If socket is already open or currently connecting, do not re-initialize
+    // If socket is already open or currently connecting to the same run, do not re-initialize
     if (
       socketRef.current &&
       (socketRef.current.readyState === WebSocket.OPEN ||
-        socketRef.current.readyState === WebSocket.CONNECTING)
+        socketRef.current.readyState === WebSocket.CONNECTING) &&
+      socketRef.current.url === effectiveWsUrl
     ) {
       return;
     }
@@ -48,7 +52,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     setStatus("connecting");
 
     try {
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(effectiveWsUrl);
 
       ws.onopen = () => {
         setStatus("connected");
@@ -126,7 +130,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
       console.error("WebSocket init error:", e);
       setStatus("disconnected");
     }
-  }, [url]);
+  }, [effectiveWsUrl]);
 
   useEffect(() => {
     isIntentionalCloseRef.current = false;
@@ -140,13 +144,14 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     };
   }, [connect]);
 
-  const sendMessage = useCallback((text: string) => {
+  const sendMessage = useCallback((text: string, mode: "steer" | "queue" | "interrupt" = "steer") => {
     if (!text.trim()) return;
 
     const payload = {
       id: `user-msg-${Date.now()}`,
       text: text.trim(),
       timestamp: new Date().toISOString(),
+      mode,
     };
 
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -241,9 +246,13 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
 
   const resetBoard = useCallback(async () => {
     try {
-      await fetch("http://127.0.0.1:8000/mock/reset", { method: "POST" });
-    } catch (e) {
-      console.error("Reset error:", e);
+      await fetch("http://127.0.0.1:8000/runs/reset", { method: "POST" });
+    } catch {
+      try {
+        await fetch("http://127.0.0.1:8000/mock/reset", { method: "POST" });
+      } catch (e) {
+        console.error("Reset error:", e);
+      }
     }
     resolvedApprovalsRef.current.clear();
     cardsRef.current = {};
@@ -251,6 +260,12 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     setCards({});
     setActiveApproval(null);
   }, []);
+
+  const startNewChat = useCallback(async (customRunId?: string) => {
+    await resetBoard();
+    const nextRunId = customRunId || `run-${Date.now().toString(36)}`;
+    setRunId(nextRunId);
+  }, [resetBoard]);
 
   return {
     status,
@@ -262,6 +277,9 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     sendApprovalDecision,
     triggerRun,
     resetBoard,
-    wsUrl: url,
+    startNewChat,
+    runId,
+    setRunId,
+    wsUrl: effectiveWsUrl,
   };
 }

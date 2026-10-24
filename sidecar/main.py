@@ -275,10 +275,18 @@ async def start_mock_scenario(req: Optional[MockControlRequest] = None):
 
 
 @app.post("/mock/reset")
+@app.post("/runs/reset")
 async def reset_mock_scenario():
-    """Reset history and stop any active mock stream."""
-    global mock_auto_started
+    """Reset history and stop any active mock stream or live run manager."""
+    global mock_auto_started, active_run_manager
     mock_runner.stop()
+    if hasattr(active_run_manager, "stop"):
+        try:
+            await active_run_manager.stop()
+        except Exception as e:
+            logger.warning(f"Error stopping run manager on reset: {e}")
+    from sidecar.agents.run_manager import SwarmRunManager
+    active_run_manager = SwarmRunManager()
     broadcaster.clear_history()
     mock_auto_started = False
     return {"status": "reset", "history_len": 0}

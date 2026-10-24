@@ -30,9 +30,35 @@ import {
   X,
 } from "lucide-react";
 
+export interface StarterGoal {
+  icon: string;
+  title: string;
+  prompt: string;
+}
+
+export const STARTER_GOALS: StarterGoal[] = [
+  {
+    icon: "🐝",
+    title: "Developer Tools Waitlist",
+    prompt: "Build a developer tools waitlist landing page with dark honeycomb aesthetic, capturing name, email, and role.",
+  },
+  {
+    icon: "🚀",
+    title: "SaaS Early Access Portal",
+    prompt: "Create a SaaS early access landing page with live countdown, feature highlights, and GitHub sign-up.",
+  },
+  {
+    icon: "📊",
+    title: "Analytics Dashboard Waitlist",
+    prompt: "Generate an analytics dashboard waitlist with early access token generation and tier preview.",
+  },
+];
+
 interface SidebarProps {
   messages: FeedMessage[];
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, mode?: "steer" | "queue" | "interrupt") => void;
+  onNewChat?: () => void;
+  runId?: string;
   onOpenSettings: () => void;
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
@@ -42,6 +68,8 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   messages,
   onSendMessage,
+  onNewChat,
+  runId,
   onOpenSettings,
   isSidebarOpen,
   onToggleSidebar,
@@ -51,6 +79,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchInput, setShowSearchInput] = useState(false);
+  const [steerMode, setSteerMode] = useState<"steer" | "queue" | "interrupt">("steer");
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const modeMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Folder toggle states
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
@@ -92,6 +123,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       newFileInputRef.current?.focus();
     }
   }, [isCreatingFile, isCreatingFolder]);
+
+  // Close steering mode dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) {
+        setShowModeDropdown(false);
+      }
+    };
+    if (showModeDropdown) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [showModeDropdown]);
 
   // Close folder menu on click outside or Escape
   useEffect(() => {
@@ -353,8 +397,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleSubmitMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-    onSendMessage(inputText.trim());
+    onSendMessage(inputText.trim(), steerMode);
     setInputText("");
+    setShowModeDropdown(false);
   };
 
   // Base starter files map
@@ -647,6 +692,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
+        {/* New Chat Session Button */}
+        {onNewChat && (
+          <button
+            type="button"
+            className="sidebar-new-chat-top-btn"
+            onClick={() => {
+              onNewChat();
+              setActiveTab("feed");
+              showToast("New chat session started ✨");
+            }}
+            title="Start New Chat & Fresh Swarm Run"
+          >
+            <Plus size={13} />
+            <span className="new-chat-label">New</span>
+          </button>
+        )}
+
         <button
           type="button"
           className="sidebar-icon-btn sidebar-collapse-btn"
@@ -672,8 +734,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
           /* NECTAR LIVE FEED VIEW */
           <div className="nectar-feed-view">
             <div className="feed-status-strip">
-              <span className="feed-title">NECTAR AGENT FEED</span>
-              <span className="feed-count">{filteredMessages.length} updates</span>
+              <div className="feed-status-left">
+                <span className="feed-title">NECTAR AGENT FEED</span>
+                {runId && (
+                  <span className="feed-run-badge" title={`Active Run ID: ${runId}`}>
+                    #{runId.replace(/^run-/, "").slice(0, 7)}
+                  </span>
+                )}
+                <span className="feed-count">{filteredMessages.length} updates</span>
+              </div>
+
+              <div className="feed-status-right">
+                {onNewChat && (
+                  <button
+                    type="button"
+                    className="feed-status-action-btn"
+                    onClick={() => {
+                      onNewChat();
+                      showToast("Fresh chat session initialized");
+                    }}
+                    title="Start New Chat / Reset Run"
+                  >
+                    <Plus size={11} />
+                    <span>New Chat</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`feed-status-icon-btn ${showSearchInput ? "active" : ""}`}
+                  onClick={() => setShowSearchInput((prev) => !prev)}
+                  title="Search messages"
+                >
+                  <Search size={12} />
+                </button>
+              </div>
             </div>
 
             {showSearchInput && (
@@ -694,10 +788,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {filteredMessages.length === 0 ? (
                 <div className="feed-empty-state">
                   <div className="feed-empty-icon">🐝</div>
-                  <p className="feed-empty-title">Nectar Stream Idle</p>
+                  <p className="feed-empty-title">Ready for Your Goal</p>
                   <p className="feed-empty-sub">
-                    Click "Run Demo" to watch Queen, Workers, Scribe and QA Bees message in real time.
+                    Message Queen Bee below. Swarm agents will coordinate, research, code, and test automatically.
                   </p>
+
+                  <div className="feed-starter-container">
+                    <div className="starter-label-row">
+                      <Sparkles size={11} className="starter-sparkle" />
+                      <span>CLICK A STARTER GOAL:</span>
+                    </div>
+                    <div className="starter-chips-list">
+                      {STARTER_GOALS.map((goal, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="starter-goal-card"
+                          onClick={() => {
+                            setInputText(goal.prompt);
+                            showToast(`Loaded: ${goal.title}`);
+                          }}
+                          title="Load this prompt into the input"
+                        >
+                          <span className="starter-icon">{goal.icon}</span>
+                          <div className="starter-content">
+                            <span className="starter-title">{goal.title}</span>
+                            <span className="starter-prompt">{goal.prompt}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ) : (
                 filteredMessages.map((m) => {
@@ -736,17 +857,95 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* User Input Bar to send instructions to Queen */}
             <form onSubmit={handleSubmitMessage} className="feed-input-form">
+              <div className="input-mode-container" ref={modeMenuRef}>
+                <button
+                  type="button"
+                  className={`input-mode-pill mode-${steerMode}`}
+                  onClick={() => setShowModeDropdown((prev) => !prev)}
+                  title={`Steering mode: ${steerMode}. Click to switch.`}
+                >
+                  <span className="mode-dot" />
+                  <span className="mode-text">{steerMode.toUpperCase()}</span>
+                  <ChevronDown size={11} className="mode-caret" />
+                </button>
+
+                {showModeDropdown && (
+                  <div className="input-mode-popover" role="menu">
+                    <button
+                      type="button"
+                      className={`mode-option-btn ${steerMode === "steer" ? "selected" : ""}`}
+                      onClick={() => {
+                        setSteerMode("steer");
+                        setShowModeDropdown(false);
+                      }}
+                    >
+                      <div className="mode-option-title">
+                        <span className="mode-dot mode-dot-steer" />
+                        <strong>Steer (Default)</strong>
+                      </div>
+                      <span className="mode-option-desc">Collaborative interview & plan adaptation</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`mode-option-btn ${steerMode === "queue" ? "selected" : ""}`}
+                      onClick={() => {
+                        setSteerMode("queue");
+                        setShowModeDropdown(false);
+                      }}
+                    >
+                      <div className="mode-option-title">
+                        <span className="mode-dot mode-dot-queue" />
+                        <strong>Queue</strong>
+                      </div>
+                      <span className="mode-option-desc">Queue instruction for the next turn</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`mode-option-btn ${steerMode === "interrupt" ? "selected" : ""}`}
+                      onClick={() => {
+                        setSteerMode("interrupt");
+                        setShowModeDropdown(false);
+                      }}
+                    >
+                      <div className="mode-option-title">
+                        <span className="mode-dot mode-dot-interrupt" />
+                        <strong>Interrupt</strong>
+                      </div>
+                      <span className="mode-option-desc">Immediate high-priority supervisor override</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <input
                 type="text"
                 className="retro-feed-input"
-                placeholder="Message Queen Bee or steer swarm..."
+                placeholder={
+                  steerMode === "interrupt"
+                    ? "Send urgent override to Swarm..."
+                    : steerMode === "queue"
+                    ? "Queue next instruction..."
+                    : "Message Queen Bee or steer swarm..."
+                }
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
               />
+
+              {inputText.trim() && (
+                <button
+                  type="button"
+                  className="input-clear-btn"
+                  onClick={() => setInputText("")}
+                  title="Clear input"
+                >
+                  <X size={13} />
+                </button>
+              )}
+
               <button
                 type="submit"
                 className="retro-feed-send-btn"
-                title="Send Instruction"
+                title={`Send instruction (${steerMode})`}
                 disabled={!inputText.trim()}
               >
                 <Send size={14} />
