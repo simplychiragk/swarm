@@ -237,6 +237,9 @@ class SwarmRunManager(RunManager):
     async def handle_approval(self, response: ApprovalResponse) -> None:
         """Handles user sign-off decision (approve or redirect)."""
         logger.info(f"SwarmRunManager processing approval decision: '{response.decision}'")
+        from sidecar.permissions import approval_coordinator
+        approval_coordinator.resolve(response.approval_id, response)
+
         self.approval_pending = False
         new_status = CardStatus.DONE if response.decision == "approve" else CardStatus.FAILED
 

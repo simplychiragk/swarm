@@ -71,6 +71,51 @@ class ApprovalCoordinator:
 approval_coordinator = ApprovalCoordinator()
 
 
+async def _bus_publish_feed(
+    bus: Any,
+    sender: AgentSender,
+    content: str,
+    lane: Lane = Lane.OPS,
+    msg_type: MessageType = MessageType.STATUS,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    now_ts = datetime.now(timezone.utc).isoformat()
+    msg = FeedMessage(
+        id=f"msg-guard-{uuid.uuid4().hex[:6]}",
+        timestamp=now_ts,
+        sender=sender,
+        lane=lane,
+        type=msg_type,
+        content=content,
+        metadata=metadata,
+    )
+    if hasattr(bus, "publish_feed_message"):
+        await bus.publish_feed_message(msg)
+    elif hasattr(bus, "emit_feed_message"):
+        await bus.emit_feed_message(msg_type=msg_type, content=content, metadata=metadata, lane=lane)
+
+
+async def _bus_publish_card(bus: Any, card: WhiteboardCard) -> None:
+    if hasattr(bus, "publish_card_upsert"):
+        await bus.publish_card_upsert(card)
+    elif hasattr(bus, "emit_card_upsert"):
+        await bus.emit_card_upsert(
+            card_id=card.id,
+            title=card.title,
+            summary=card.summary,
+            status=card.status,
+            lane=card.lane,
+            evidence=card.evidence,
+        )
+
+
+async def _bus_publish_approval(bus: Any, req: ApprovalRequest) -> None:
+    if hasattr(bus, "publish_approval_request"):
+        await bus.publish_approval_request(req)
+    elif hasattr(bus, "emit_approval_request"):
+        await bus.emit_approval_request(request=req)
+
+
 class ToolExecutor:
     """
     The singular execution gateway for all agent tool invocations.
@@ -245,7 +290,8 @@ class ToolExecutor:
             )
 
             if bus:
-                await bus.emit_feed_message(
+                await _bus_publish_feed(
+                    bus=bus,
                     sender=AgentSender.SYSTEM,
                     content=f"🛡️ User authorized '{agent}' to execute tool '{tool}' (scope: {scope_val}).",
                     lane=Lane.OPS,
@@ -348,7 +394,8 @@ class ToolExecutor:
 
     async def _emit_deny_events(self, bus: Any, agent: str, tool: str, decision: Decision) -> None:
         """Emits compact feed message and whiteboard card guard evidence upon denial."""
-        await bus.emit_feed_message(
+        await _bus_publish_feed(
+            bus=bus,
             sender=AgentSender.SYSTEM,
             content=f"🛡️ Guard DENIED {agent} calling '{tool}': {decision.reason}",
             lane=Lane.OPS,
@@ -358,7 +405,8 @@ class ToolExecutor:
 
         card_id = f"card-guard-deny-{uuid.uuid4().hex[:6]}"
         now_ts = datetime.now(timezone.utc).isoformat()
-        await bus.emit_card_upsert(
+        await _bus_publish_card(
+            bus=bus,
             card=WhiteboardCard(
                 id=card_id,
                 title=f"Security Alert: {tool} Blocked",
@@ -369,7 +417,7 @@ class ToolExecutor:
                     EvidenceItem(kind="guard", url_or_text=f"Blocked: {decision.reason}")
                 ],
                 updated_at=now_ts,
-            )
+            ),
         )
 
     async def _emit_ask_events(
@@ -381,7 +429,8 @@ class ToolExecutor:
         appr_request: ApprovalRequest,
     ) -> None:
         """Emits feed notification, approval card, and approval request event."""
-        await bus.emit_feed_message(
+        await _bus_publish_feed(
+            bus=bus,
             sender=AgentSender.SYSTEM,
             content=f"🛡️ Guard awaiting authorization for {agent} calling '{tool}' ({decision.tier} risk)...",
             lane=Lane.OPS,
@@ -403,8 +452,8 @@ class ToolExecutor:
         )
         appr_request.card = approval_card
 
-        await bus.emit_card_upsert(card=approval_card)
-        await bus.emit_approval_request(request=appr_request)
+        await _bus_publish_card(bus=bus, card=approval_card)
+        await _bus_publish_approval(bus=bus, req=appr_request)
 
     async def _emit_timeout_events(
         self,
@@ -414,14 +463,16 @@ class ToolExecutor:
         card_id: str,
         reason: str,
     ) -> None:
-        await bus.emit_feed_message(
+        await _bus_publish_feed(
+            bus=bus,
             sender=AgentSender.SYSTEM,
             content=f"🛡️ Guard authorization timed out for {agent} calling '{tool}'. Operation DENIED.",
             lane=Lane.OPS,
             msg_type=MessageType.ERROR,
         )
         now_ts = datetime.now(timezone.utc).isoformat()
-        await bus.emit_card_upsert(
+        await _bus_publish_card(
+            bus=bus,
             card=WhiteboardCard(
                 id=card_id,
                 title=f"Authorization Timed Out: {tool}",
@@ -432,7 +483,7 @@ class ToolExecutor:
                     EvidenceItem(kind="guard", url_or_text=reason)
                 ],
                 updated_at=now_ts,
-            )
+            ),
         )
 
     async def _emit_user_deny_events(
@@ -443,14 +494,16 @@ class ToolExecutor:
         card_id: str,
         reason: str,
     ) -> None:
-        await bus.emit_feed_message(
+        await _bus_publish_feed(
+            bus=bus,
             sender=AgentSender.SYSTEM,
             content=f"🛡️ User DENIED authorization for {agent} to run '{tool}': {reason}",
             lane=Lane.OPS,
             msg_type=MessageType.STATUS,
         )
         now_ts = datetime.now(timezone.utc).isoformat()
-        await bus.emit_card_upsert(
+        await _bus_publish_card(
+            bus=bus,
             card=WhiteboardCard(
                 id=card_id,
                 title=f"Authorization Denied: {tool}",
@@ -461,7 +514,7 @@ class ToolExecutor:
                     EvidenceItem(kind="guard", url_or_text=f"Denied by user: {reason}")
                 ],
                 updated_at=now_ts,
-            )
+            ),
         )
 
 

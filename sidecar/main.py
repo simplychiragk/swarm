@@ -125,6 +125,9 @@ async def handle_inbound_envelope(envelope: InboundEnvelope) -> None:
 
         elif envelope.event == "approval_response":
             approval_resp: ApprovalResponse = envelope.payload
+            from sidecar.permissions import approval_coordinator
+            approval_coordinator.resolve(approval_resp.approval_id, approval_resp)
+
             # Scrub any matching approval_request from broadcaster history so it never replays
             broadcaster.history = [
                 evt for evt in broadcaster.history
@@ -277,6 +280,54 @@ async def whiteboard_filter_endpoint(req: WhiteboardFilterRequest):
     """Check if a message warrants a honeycomb whiteboard summary card."""
     show = decision_engine.should_show_on_whiteboard(req.message)
     return {"message_id": req.message.id, "show_on_whiteboard": show}
+
+
+@app.get("/runs/{run_id}/permissions")
+async def get_run_permissions_endpoint(run_id: str):
+    """Returns the SQLite audit trail of all permission checks and decisions for a run."""
+    from sidecar.permissions import get_run_permission_events
+    events = get_run_permission_events(run_id)
+    return {"run_id": run_id, "events": events, "count": len(events)}
+
+
+@app.get("/runs/{run_id}/artifacts/{artifact_path:path}")
+async def get_run_artifact_endpoint(run_id: str, artifact_path: str):
+    """
+    Safely streams files strictly from the run's workspace directory
+    with content-type allowlisting (e.g. QA screenshots, HTML, JSON).
+    """
+    from fastapi.responses import FileResponse
+    from fastapi import HTTPException
+    from sidecar.permissions import resolve_safe_path, PathSafetyError
+
+    ALLOWED_CONTENT_TYPES = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".svg": "image/svg+xml",
+        ".html": "text/html",
+        ".htm": "text/html",
+        ".json": "application/json",
+        ".txt": "text/plain",
+        ".css": "text/css",
+        ".js": "text/javascript",
+    }
+
+    try:
+        file_path = resolve_safe_path(run_id, artifact_path, must_exist=True)
+    except (PathSafetyError, PermissionError) as pe:
+        raise HTTPException(status_code=403, detail=f"Permission Denied: {pe}")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Artifact not found in run workspace.")
+
+    ext = file_path.suffix.lower()
+    if ext not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Content-type '{ext}' is not permitted for artifact streaming. Allowed: {list(ALLOWED_CONTENT_TYPES.keys())}",
+        )
+
+    return FileResponse(path=file_path, media_type=ALLOWED_CONTENT_TYPES[ext])
 
 
 if __name__ == "__main__":

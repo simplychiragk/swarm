@@ -47,12 +47,24 @@ class WorkerAgent(BaseAgent):
         self.received_peer_contract: Optional[str] = None
         self.active_task_id: Optional[str] = None
 
-    async def write_deliverable_artifact(self, filename: str, content: str) -> None:
+    async def write_deliverable_artifact(self, filename: str, content: str, run_id: str = "run-default") -> None:
         """
-        Stub for persisting code files to disk.
-        TODO(post-hack): Integrate with real file-system writing tools when project scaffolding sandbox is connected.
+        Persists generated code files to the run workspace via ToolExecutor.
         """
-        logger.info(f"Worker '{self.name}' simulated file deliverable '{filename}' ({len(content)} bytes)")
+        from sidecar.permissions import default_executor
+        clean_name = filename.replace("sidecar/", "src/").replace("app/", "src/")
+        tool_res = await default_executor.execute(
+            run_id=run_id,
+            agent=self.name,
+            tool="file_write",
+            args={"path": clean_name, "content": content},
+            context={"web_derived": False},
+            bus=self.bus,
+        )
+        if not tool_res.success:
+            logger.warning(f"Worker deliverable write blocked: {tool_res.error}")
+        else:
+            logger.info(f"Worker '{self.name}' persisted deliverable '{clean_name}' ({len(content)} bytes)")
 
     async def execute_task(self, task_id: str, title: str, description: str) -> None:
         """Executes a delegated task with LLM completion and peer coordination."""
