@@ -77,6 +77,13 @@ class ApprovalRequest(BaseModel):
     lane: Lane = Lane.NONE
     card: Optional[WhiteboardCard] = None
     created_at: str = Field(..., description="ISO 8601 string")
+    tool: Optional[str] = None
+    args_preview: Optional[str] = None
+    risk: Optional[Literal["low", "medium", "high"]] = None
+    reason: Optional[str] = None
+    agent: Optional[str] = None
+    scope_options: Optional[List[str]] = None
+    expires_in_s: Optional[Union[int, float]] = None
 
 
 class UserMessage(BaseModel):
@@ -90,6 +97,7 @@ class ApprovalResponse(BaseModel):
     card_id: str
     decision: Literal["approve", "redirect"]
     note: Optional[str] = None
+    scope: Optional[Literal["once", "run", "deny"]] = None
 
 
 class FeedMessageEnvelope(BaseModel):

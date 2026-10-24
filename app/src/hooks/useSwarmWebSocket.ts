@@ -4,6 +4,7 @@ import type {
   FeedMessage,
   WhiteboardCard,
   ApprovalRequest,
+  CardStatus,
 } from "../types/contracts";
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:8000/ws";
@@ -43,7 +44,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
         // ignore
       }
     }
-
     isIntentionalCloseRef.current = false;
     setStatus("connecting");
 
@@ -62,6 +62,10 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
             setMessages((prev) => [...prev, envelope.payload]);
           } else if (envelope.event === "card_upsert") {
             const card = envelope.payload;
+            cardsRef.current = {
+              ...cardsRef.current,
+              [card.id]: card,
+            };
             setCards((prev) => ({
               ...prev,
               [card.id]: card,
@@ -109,7 +113,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connect();
-          }, 4000);
+          }, 3000);
         }
       };
 
@@ -125,6 +129,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
   }, [url]);
 
   useEffect(() => {
+    isIntentionalCloseRef.current = false;
     connect();
     return () => {
       isIntentionalCloseRef.current = true;
@@ -168,7 +173,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
   }, []);
 
   const sendApprovalDecision = useCallback(
-    (decision: "approve" | "redirect", note?: string) => {
+    (decision: "approve" | "redirect", note?: string, scope?: "once" | "run") => {
       if (!activeApproval) return;
 
       const approvalId = activeApproval.id;
@@ -182,6 +187,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
         approval_id: approvalId,
         card_id: cardId,
         decision,
+        scope: scope || "once",
         note: note || (decision === "approve" ? "Approved by user" : "Redirected by user"),
       };
 
@@ -194,10 +200,12 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
         );
       }
 
+      const finalStatus: CardStatus = decision === "approve" ? "done" : "failed";
+
       // Optimistically update card status locally to final state
       setCards((prev) => {
         const target = prev[cardId];
-        return {
+        const updated: Record<string, WhiteboardCard> = {
           ...prev,
           [cardId]: {
             ...(target || {
@@ -206,13 +214,15 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
               lane: "Ops",
               updated_at: new Date().toISOString(),
             }),
-            status: decision === "approve" ? "done" : "failed",
+            status: finalStatus,
             summary:
               decision === "approve"
                 ? "Production release authorized by user. Application deployed live."
                 : `Release redirected: ${payload.note}`,
           },
         };
+        cardsRef.current = updated;
+        return updated;
       });
 
       // Clear the active approval dialog immediately
@@ -236,6 +246,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
       console.error("Reset error:", e);
     }
     resolvedApprovalsRef.current.clear();
+    cardsRef.current = {};
     setMessages([]);
     setCards({});
     setActiveApproval(null);

@@ -34,15 +34,29 @@ class ResearchBee(BaseAgent):
         )
         self.client = client or TinyFishClient()
 
-    async def execute_research(self, topic: str) -> None:
-        """Executes live web search and extracts patterns."""
-        logger.info(f"Research Bee researching '{topic}' via TinyFish...")
+    async def execute_research(self, topic: str, run_id: str = "run-default") -> None:
+        """Executes live web search and extracts patterns via ToolExecutor."""
+        logger.info(f"Research Bee researching '{topic}' via ToolExecutor...")
         await self.emit_feed_message(
             msg_type=MessageType.STATUS,
             content=f"Research Bee: Querying TinyFish Search for fresh patterns on: '{topic}'...",
         )
 
-        search_res = await self.client.search(query=topic)
+        from sidecar.permissions import default_executor
+        tool_res = await default_executor.execute(
+            run_id=run_id,
+            agent=self.name,
+            tool="tinyfish_search",
+            args={"query": topic, "purpose": "research"},
+            context={"web_derived": False},
+            bus=self.bus,
+        )
+
+        if not tool_res.success:
+            logger.warning(f"Research Bee tool call blocked or failed: {tool_res.error}")
+            return
+
+        search_res = tool_res.data or {}
         results = search_res.get("results", [])
         snippet = results[0].get("snippet", "Current best practices gathered.") if results else "No direct matches found."
 
@@ -83,15 +97,29 @@ class QABee(BaseAgent):
         )
         self.client = client or TinyFishClient()
 
-    async def execute_browser_verification(self, target_url: str, goal: str) -> None:
-        """Executes automated browser session and attaches verification evidence."""
-        logger.info(f"QA Bee dispatching TinyFish browser agent to {target_url} with goal: '{goal}'")
+    async def execute_browser_verification(self, target_url: str, goal: str, run_id: str = "run-default") -> None:
+        """Executes automated browser session via ToolExecutor and attaches verification evidence."""
+        logger.info(f"QA Bee dispatching TinyFish browser agent to {target_url} via ToolExecutor")
         await self.emit_feed_message(
             msg_type=MessageType.STATUS,
             content=f"QA Bee: Dispatching TinyFish browser agent to '{target_url}' (Goal: {goal})...",
         )
 
-        res = await self.client.run_browser_task(url=target_url, goal=goal)
+        from sidecar.permissions import default_executor
+        tool_res = await default_executor.execute(
+            run_id=run_id,
+            agent=self.name,
+            tool="tinyfish_browser_task",
+            args={"url": target_url, "goal": goal},
+            context={"web_derived": False},
+            bus=self.bus,
+        )
+
+        if not tool_res.success:
+            logger.warning(f"QA Bee tool call blocked or failed: {tool_res.error}")
+            return
+
+        res = tool_res.data or {}
         verdict = res.get("result", {}).get("verdict", "PASS")
         details = res.get("result", {}).get("details", "All browser assertions passed.")
         screenshot_url = res.get("evidence", {}).get("url_or_text", "https://tinyfish.ai/evidence/pass.png")

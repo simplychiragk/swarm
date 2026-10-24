@@ -17,12 +17,18 @@ from sidecar.agents.bus import MessageBus
 @pytest.fixture(autouse=True)
 def force_mock_tinyfish():
     old = os.environ.get("SWARM_TINYFISH_MODE")
+    old_perm = os.environ.get("SWARM_PERMISSION_MODE")
     os.environ["SWARM_TINYFISH_MODE"] = "mock"
+    os.environ["SWARM_PERMISSION_MODE"] = "demo"
     yield
     if old is None:
         os.environ.pop("SWARM_TINYFISH_MODE", None)
     else:
         os.environ["SWARM_TINYFISH_MODE"] = old
+    if old_perm is None:
+        os.environ.pop("SWARM_PERMISSION_MODE", None)
+    else:
+        os.environ["SWARM_PERMISSION_MODE"] = old_perm
 
 
 @pytest.mark.asyncio

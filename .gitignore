@@ -35,3 +35,8 @@ pip-delete-this-directory.txt
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Run workspaces and SQLite databases
+workspace/
+*.sqlite
+*.db

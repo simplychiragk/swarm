@@ -33,6 +33,36 @@
     "created_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "tool": {
+      "type": "string",
+      "description": "Optional tool name awaiting permission"
+    },
+    "args_preview": {
+      "type": "string",
+      "description": "Optional redacted preview of tool arguments"
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Optional risk tier assessed by policy engine"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Optional policy explanation for why approval is requested"
+    },
+    "agent": {
+      "type": "string",
+      "description": "Optional requesting agent identifier"
+    },
+    "scope_options": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional grant scope options, e.g. ['once', 'run']"
+    },
+    "expires_in_s": {
+      "type": "number",
+      "description": "Optional seconds until permission request times out to deny"
     }
   },
   "required": ["id", "card_id", "prompt", "options", "lane", "created_at"],

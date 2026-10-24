@@ -21,6 +21,11 @@
     "note": {
       "type": "string",
       "description": "Optional user feedback, guidance or redirect notes"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["once", "run", "deny"],
+      "description": "Optional permission grant scope: once, run (medium risk only), or deny"
     }
   },
   "required": ["approval_id", "card_id", "decision"],

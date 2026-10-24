@@ -44,6 +44,13 @@ export interface ApprovalRequest {
   lane: Lane;
   card?: WhiteboardCard;
   created_at: string; // ISO 8601
+  tool?: string;
+  args_preview?: string;
+  risk?: 'low' | 'medium' | 'high';
+  reason?: string;
+  agent?: string;
+  scope_options?: string[];
+  expires_in_s?: number;
 }
 
 export interface UserMessage {
@@ -57,6 +64,7 @@ export interface ApprovalResponse {
   card_id: string;
   decision: 'approve' | 'redirect';
   note?: string;
+  scope?: 'once' | 'run' | 'deny';
 }
 
 export type WebSocketEventType =
