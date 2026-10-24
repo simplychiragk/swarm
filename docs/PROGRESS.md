@@ -9,7 +9,7 @@
 | Stage 2 | SQLite persistence (WAL mode, versioned migrations, runs/events/cards/approvals/artifacts, DB replay) | done |
 | Stage 3 | Permission layer (deterministic policy, tiers, escalation, safe command/path, audit) | done |
 | Stage 4 | Real-time agent chat (channels, threads, intents, decision board, concurrent agent tasks) | done |
-| Stage 5 | TinyFish for real (Search, Fetch, browser agent, ResearchBee grounding, smoke script) | not started |
+| Stage 5 | TinyFish for real (Search, Fetch, browser agent, ResearchBee grounding, smoke script) | done |
 | Stage 6 | Workers build real project (served locally, optional tunnel, seeded-bug mode) | not started |
 | Stage 7 | QA bee & verify loop (browser test, fail/fix/pass, 2 retry cap, approval gate) | not started |
 | Stage 8 | End-to-end hardening of core path (live runs, pacing, provenance summary card) | not started |
@@ -103,6 +103,30 @@
 - **Contract Type Mirror**: Updated `sidecar/models/contracts.py`, `shared/types/contracts.ts`, and mirrored to `app/src/types/contracts.ts`.
 - **Documentation**: Authored `docs/CHAT.md` detailing channel routing, intent semantics, and thread lifecycle.
 - **Unit Tests**: Added `sidecar/tests/agents/test_chat.py` (6 tests covering channel isolation, direct messaging, threading, turn tracking, auto-summarization, decision board, and presence/chunk events). Suite now 46/46 passing.
+
+---
+
+## Stage 5: TinyFish Integration for Real
+
+### 1. What Was Built
+- **TinyFish API Client (`sidecar/tools/client.py`)**:
+  - Search: POST `/v1/search` (`query`, `limit`, `purpose`) with fallback to `https://api.search.tinyfish.ai`. Verified live in smoke test.
+  - Fetch: POST `/v1/fetch` (`url`) extracting clean markdown and text, with fallback to `https://api.fetch.tinyfish.ai`.
+  - Browser Agent: POST `/v1/run` (`url`, `goal`, `options`) with polling `GET /v1/run/{id}` returning `{status, verdict, details, evidence}`.
+  - Resolved `TODO(verify-docs)` comments with robust schemas and fast timeouts (5s for discovery, 10s for browser).
+- **Honest Provenance Tagging**:
+  - If `TINYFISH_API_KEY` is present and live call succeeds: stamped with `provenance: "real"`.
+  - If keys are missing, network fails, or mock mode is requested: seamlessly falls back to realistic deterministic data with `provenance: "simulated"`.
+- **ResearchBee Plan Grounding**:
+  - Queries TinyFish Search for `"best practice waitlist form fields 2026"`, fetches top result content, and posts a nectar card to the Honeycomb Whiteboard.
+  - Directly posts an `intent="proposal"` message to channel `plan` grounding the Queen, FE Worker, and BE Worker on minimal 3-field forms (Name, Work Email, Role) and instant queue confirmation toasts.
+- **QABee End-to-End Browser Testing**:
+  - Dispatches TinyFish browser agent to target page with verification goals.
+  - Generates structured evaluation (`PASS` or `FAIL`), captures screenshot evidence, and posts result card to whiteboard.
+- **Smoke Script (`scripts/smoke_tinyfish.py`)**:
+  - Automated smoke test executing Search, Fetch, and Browser Agent against `example.com` or live API.
+  - Measures execution latency per step and writes full audit evidence to `data/qa_smoke.json`.
+- **Unit Tests**: Updated `sidecar/tests/tools/test_tinyfish.py` with 6 unit tests covering mock fallbacks, evidence cards, and plan grounding proposals. Full test suite now 47/47 passing.
 
 ---
 

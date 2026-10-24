@@ -132,7 +132,7 @@ class SwarmRunManager(RunManager):
             # If enabled, Research Bee gathers live web specs prior to worker build
             if self.enable_tinyfish and self.research_bee:
                 await asyncio.sleep(0.5)
-                await self.research_bee.execute_research("modern react waitlist form patterns")
+                await self.research_bee.execute_research("best practice waitlist form fields 2026")
 
             # 2. Parallel construction: BE Worker and FE Worker execute tasks
             await asyncio.sleep(1.0)

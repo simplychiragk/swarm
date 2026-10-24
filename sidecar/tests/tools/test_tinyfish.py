@@ -99,3 +99,31 @@ async def test_qa_bee_browser_verification_card():
     assert cards[0].id == "card-qa-verify"
     assert cards[0].status == CardStatus.DONE
     assert any(e.kind == "screenshot" for e in cards[0].evidence)
+
+
+@pytest.mark.asyncio
+async def test_research_bee_waitlist_plan_grounding():
+    """Verify ResearchBee searches for waitlist form fields, fetches top result, and posts plan grounding proposal."""
+    bus = MessageBus()
+    feed_messages = []
+    cards = []
+
+    async def mock_feed(m):
+        feed_messages.append(m)
+
+    async def mock_card(c):
+        cards.append(c)
+
+    bus.subscribe(mock_feed)
+    bus.publish_card_upsert = mock_card  # type: ignore
+
+    bee = ResearchBee(bus, client=TinyFishClient(api_key=""))
+    res = await bee.execute_research("best practice waitlist form fields 2026")
+
+    assert res["status"] == "success"
+    assert res["provenance"] == "simulated"
+
+    # Verify plan proposal message was emitted
+    proposals = [m for m in feed_messages if m.intent == "proposal" and m.channel == "plan"]
+    assert len(proposals) >= 1
+    assert "queen" in proposals[0].mentions or "fe_worker" in proposals[0].mentions
