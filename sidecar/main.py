@@ -36,12 +36,13 @@ from sidecar.models.contracts import (
     parse_inbound_envelope,
 )
 from sidecar.runtime.run_manager import RunManager, NoOpRunManager
+from sidecar.agents.run_manager import SwarmRunManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("swarm.sidecar")
 
 decision_engine = RuleBasedDecisionLayer()
-active_run_manager: RunManager = NoOpRunManager()
+active_run_manager: RunManager = SwarmRunManager()
 
 
 def get_swarm_mode() -> str:
@@ -65,6 +66,8 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Swarm FastAPI sidecar shutting down...")
     mock_runner.stop()
+    if hasattr(active_run_manager, "stop"):
+        await active_run_manager.stop()
 
 
 app = FastAPI(

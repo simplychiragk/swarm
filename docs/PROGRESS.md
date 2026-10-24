@@ -6,7 +6,7 @@
 |---|---|---|
 | Stage 1 | Contract bidirectional extensions, SWARM_MODE handling & RunManager interface | done |
 | Stage 2 | LLM Gateway with provider fallback chain, JSON schemas & tests | done |
-| Stage 3 | Multi-agent engine (Queen, Workers, Scribe) on async message bus | planned |
+| Stage 3 | Multi-agent engine (Queen, Workers, Scribe) on async message bus | done |
 | Stage 4 | TinyFish Search, Fetch & Browser QA tools integration | planned |
 
 ---
@@ -102,4 +102,66 @@
 
 ### 5. What Is Not Done
 - In-process agent message bus and orchestration engine (scheduled for Stage 3).
+- TinyFish live tool integration (scheduled for Stage 4).
+
+---
+
+## Stage 3: Multi-Agent Engine & Runtime Manager
+
+### 1. What Was Built
+- Implemented in-process asynchronous message bus in `sidecar/agents/bus.py` with subscriber queues and automatic WebSocket broadcast forwarding.
+- Created `BaseAgent` class in `sidecar/agents/base.py` with queue-based inbox, structured emission helpers (`emit_feed_message`, `emit_card_upsert`, `emit_approval_request`), and per-agent message allocation limits.
+- Built `QueenAgent` in `sidecar/agents/queen.py`:
+  - Conducts user discovery interviews (strictly maximum 3 questions).
+  - Produces structured JSON task plans via LLM gateway.
+  - Classifies task lanes using the Decision Layer (`route_task`).
+  - Monitors worker activity and issues health nudges.
+- Built `WorkerAgent` in `sidecar/agents/worker.py` for Frontend and Backend lanes:
+  - Produces API contracts and React component specs.
+  - Exchanges direct peer messages over the bus (BE worker sends API contract to FE worker).
+  - Includes placeholder hook `write_deliverable_artifact` for future disk persistence tools.
+- Built `ScribeAgent` in `sidecar/agents/scribe.py`:
+  - Batches raw worker nectar every 2 seconds.
+  - Filters updates using `DecisionLayer.should_show_on_whiteboard`.
+  - Produces plain-language Honeycomb Whiteboard cards via LLM gateway.
+- Built `SwarmRunManager` in `sidecar/agents/run_manager.py`:
+  - Full implementation of `RunManager` wired into `sidecar/main.py`.
+  - Enforces global run timeout (120s) and max LLM calls (40 calls).
+  - Gated production release using `DecisionLayer.needs_approval`.
+  - Emits failure cards if limits or timeouts are breached.
+- Created comprehensive test suite in `sidecar/tests/agents/test_engine.py` (all 6 tests passing).
+- Authored `sidecar/agents/README.md` and initial demo guide `docs/DEMO.md`.
+
+### 2. Files Added or Changed
+- Added:
+  - `sidecar/agents/__init__.py`
+  - `sidecar/agents/bus.py`
+  - `sidecar/agents/base.py`
+  - `sidecar/agents/queen.py`
+  - `sidecar/agents/worker.py`
+  - `sidecar/agents/scribe.py`
+  - `sidecar/agents/run_manager.py`
+  - `sidecar/agents/README.md`
+  - `sidecar/tests/agents/__init__.py`
+  - `sidecar/tests/agents/test_engine.py`
+  - `docs/DEMO.md`
+- Changed:
+  - `sidecar/main.py` (instantiates and registers `SwarmRunManager`)
+  - `docs/PROGRESS.md`
+
+### 3. How to Run and Test
+- Run tests: `.venv\Scripts\pytest sidecar/tests/agents`
+- Test live mode:
+  ```powershell
+  $env:SWARM_MODE="live"
+  $env:SWARM_LLM_MODE="mock"
+  python -m uvicorn sidecar.main:app --port 8000
+  ```
+  Sending a `user_message` from the desktop client triggers a live agent run through discovery, worker peer chatter, scribe cards, and an approval gate.
+
+### 4. Assumptions Made
+- In live mode with mock LLM, the Queen concludes the interview when prompt requirements contain audience/theme/fields or after reaching 3 questions.
+- High-risk operations (such as production deployments) automatically raise an approval request before marking the run complete.
+
+### 5. What Is Not Done
 - TinyFish live tool integration (scheduled for Stage 4).
