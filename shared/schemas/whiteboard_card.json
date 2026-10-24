@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm.hack/schemas/whiteboard_card.json",
+  "title": "WhiteboardCard",
+  "description": "Honey summary card posted by the scribe to the honeycomb whiteboard",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique card identifier"
+    },
+    "title": {
+      "type": "string",
+      "description": "Short headline for the whiteboard card"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Clean plain-language summary of what agents completed or are doing"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "in_progress", "done", "needs_approval", "failed"],
+      "description": "Current lifecycle status of the task card"
+    },
+    "lane": {
+      "type": "string",
+      "enum": ["FE", "BE", "DB", "Design", "Test", "Docs", "Ops", "none"],
+      "description": "Domain lane for this card"
+    },
+    "evidence": {
+      "type": "array",
+      "description": "Verification artifacts (e.g. TinyFish browser QA screenshots, test notes)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Type of evidence, e.g. screenshot, log, url, diff"
+          },
+          "url_or_text": {
+            "type": "string",
+            "description": "Evidence URL, file path, or textual snippet"
+          }
+        },
+        "required": ["kind", "url_or_text"],
+        "additionalProperties": false
+      }
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of last card update"
+    }
+  },
+  "required": ["id", "title", "summary", "status", "lane", "updated_at"],
+  "additionalProperties": false
+}

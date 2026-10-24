@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm.hack/schemas/approval_request.json",
+  "title": "ApprovalRequest",
+  "description": "User approval request triggered by the decision layer or queen",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the approval request"
+    },
+    "card_id": {
+      "type": "string",
+      "description": "Associated WhiteboardCard ID needing user sign-off"
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Question or decision presented to the user"
+    },
+    "options": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Available decision buttons or choices"
+    },
+    "lane": {
+      "type": "string",
+      "enum": ["FE", "BE", "DB", "Design", "Test", "Docs", "Ops", "none"]
+    },
+    "card": {
+      "$ref": "./whiteboard_card.json",
+      "description": "Optional embedded snapshot of the card"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["id", "card_id", "prompt", "options", "lane", "created_at"],
+  "additionalProperties": false
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm.hack/schemas/event_envelope.json",
+  "title": "EventEnvelope",
+  "description": "Standard WebSocket envelope sent from sidecar to client app",
+  "type": "object",
+  "properties": {
+    "event": {
+      "type": "string",
+      "enum": ["feed_message", "card_upsert", "approval_request"],
+      "description": "Event channel name"
+    },
+    "payload": {
+      "description": "Typed event payload corresponding to event name",
+      "oneOf": [
+        { "$ref": "./feed_message.json" },
+        { "$ref": "./whiteboard_card.json" },
+        { "$ref": "./approval_request.json" }
+      ]
+    }
+  },
+  "required": ["event", "payload"],
+  "additionalProperties": false
+}
