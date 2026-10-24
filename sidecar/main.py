@@ -330,6 +330,170 @@ async def get_run_artifact_endpoint(run_id: str, artifact_path: str):
     return FileResponse(path=file_path, media_type=ALLOWED_CONTENT_TYPES[ext])
 
 
+class SaveFilePayload(BaseModel):
+    content: str
+
+
+class CreateItemPayload(BaseModel):
+    path: str
+    content: Optional[str] = ""
+    is_directory: Optional[bool] = False
+
+
+def guess_file_language(filename: str) -> str:
+    from pathlib import Path
+    ext = Path(filename).suffix.lower()
+    mapping = {
+        ".tsx": "typescript",
+        ".ts": "typescript",
+        ".jsx": "javascript",
+        ".js": "javascript",
+        ".json": "json",
+        ".html": "html",
+        ".htm": "html",
+        ".css": "css",
+        ".py": "python",
+        ".md": "markdown",
+        ".gitignore": "gitignore",
+        ".yml": "yaml",
+        ".yaml": "yaml",
+        ".sql": "sql",
+        ".txt": "text",
+        ".svg": "svg",
+    }
+    return mapping.get(ext, "plaintext")
+
+
+def seed_default_workspace_if_empty(workspace_dir) -> None:
+    """Seeds starter project files if workspace is empty."""
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    existing = list(workspace_dir.rglob("*"))
+    if any(f.is_file() for f in existing):
+        return
+
+    starter_files = {
+        "index.html": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <title>Section 9 Waitlist Landing</title>\n  </head>\n  <body>\n    <div id=\"root\"></div>\n    <script type=\"module\" src=\"/src/main.tsx\"></script>\n  </body>\n</html>",
+        "package.json": "{\n  \"name\": \"section9-waitlist\",\n  \"version\": \"0.1.0\",\n  \"dependencies\": {\n    \"react\": \"^19.0.0\",\n    \"react-dom\": \"^19.0.0\"\n  }\n}",
+        "src/App.tsx": "import React, { useState } from 'react';\n\nexport default function App() {\n  const [email, setEmail] = useState('');\n  const [submitted, setSubmitted] = useState(false);\n\n  const handleSubmit = (e: React.FormEvent) => {\n    e.preventDefault();\n    setSubmitted(true);\n  };\n\n  return (\n    <main className=\"waitlist-hero\">\n      <h1>Join the AI Swarm Waitlist</h1>\n      <p>Autonomous multi-agent development environment.</p>\n      {submitted ? (\n        <div className=\"toast\">You are #42 on the waitlist!</div>\n      ) : (\n        <form onSubmit={handleSubmit}>\n          <input\n            type=\"email\"\n            placeholder=\"Enter your work email\"\n            value={email}\n            onChange={(e) => setEmail(e.target.value)}\n            required\n          />\n          <button type=\"submit\">Request Access</button>\n        </form>\n      )}\n    </main>\n  );\n}",
+        "src/main.tsx": "import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\nimport './index.css';\n\nReactDOM.createRoot(document.getElementById('root')!).render(<App />);",
+        "src/index.css": ":root {\n  --honey: #e5a12d;\n  --bg: #121214;\n  --fg: #f4f4f5;\n}\nbody {\n  margin: 0;\n  background: var(--bg);\n  color: var(--fg);\n  font-family: sans-serif;\n}",
+        "api/main.py": "from fastapi import FastAPI\nfrom pydantic import BaseModel, EmailStr\n\napp = FastAPI()\n\nclass WaitlistRequest(BaseModel):\n    name: str\n    email: EmailStr\n    role: str\n\n@app.post('/api/waitlist', status_code=201)\ndef submit_waitlist(req: WaitlistRequest):\n    return {'status': 'success', 'id': 'wl-42', 'message': f'Welcome {req.name}!'}",
+        "README.md": "# Section 9: Autonomous Waitlist Landing Page\n\nConstructed collaboratively by Swarm Queen, Frontend Worker, and Backend Worker bees.\nVerified by TinyFish automated browser QA.",
+    }
+
+    for rel_path, content in starter_files.items():
+        file_path = workspace_dir / rel_path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+
+
+def build_workspace_tree(run_id: str) -> Dict[str, Any]:
+    from sidecar.permissions import get_run_workspace
+    ws = get_run_workspace(run_id, create=True)
+    seed_default_workspace_if_empty(ws)
+
+    files_list = []
+    for p in ws.rglob("*"):
+        if p.is_file():
+            rel_path = p.relative_to(ws).as_posix()
+            if "__pycache__" in rel_path or ".git" in rel_path:
+                continue
+            try:
+                content = p.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                content = ""
+            files_list.append({
+                "name": p.name,
+                "path": rel_path,
+                "language": guess_file_language(p.name),
+                "content": content,
+                "size": p.stat().st_size,
+            })
+
+    files_list.sort(key=lambda x: x["path"])
+    return {
+        "run_id": run_id,
+        "workspace": ws.as_posix(),
+        "files": files_list,
+        "count": len(files_list),
+    }
+
+
+@app.get("/workspace/tree")
+@app.get("/runs/{run_id}/tree")
+async def get_workspace_tree_endpoint(run_id: str = "run-default"):
+    """Returns all files in the run workspace with language and content for the UI code viewer."""
+    return build_workspace_tree(run_id)
+
+
+@app.get("/workspace/files/{file_path:path}")
+@app.get("/runs/{run_id}/files/{file_path:path}")
+async def get_workspace_file_endpoint(file_path: str, run_id: str = "run-default"):
+    """Retrieves single file text content."""
+    from fastapi import HTTPException
+    from sidecar.permissions import resolve_safe_path, PathSafetyError
+    try:
+        real_path = resolve_safe_path(run_id, file_path, must_exist=True)
+        return {
+            "name": real_path.name,
+            "path": file_path,
+            "language": guess_file_language(real_path.name),
+            "content": real_path.read_text(encoding="utf-8", errors="replace"),
+            "size": real_path.stat().st_size,
+        }
+    except (PathSafetyError, PermissionError) as pe:
+        raise HTTPException(status_code=403, detail=f"Permission Denied: {pe}")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found in run workspace.")
+
+
+@app.put("/workspace/files/{file_path:path}")
+@app.put("/runs/{run_id}/files/{file_path:path}")
+async def save_workspace_file_endpoint(file_path: str, payload: SaveFilePayload, run_id: str = "run-default"):
+    """Saves edited content to a file in the workspace via ToolExecutor."""
+    from fastapi import HTTPException
+    from sidecar.permissions import default_executor
+    res = await default_executor.execute(
+        run_id=run_id,
+        agent="user",
+        tool="file_write",
+        args={"path": file_path, "content": payload.content},
+        context={"web_derived": False},
+        bus=None,
+    )
+    if not res.success:
+        raise HTTPException(status_code=403, detail=res.error)
+    return {"success": True, "path": file_path, "bytes": len(payload.content)}
+
+
+@app.post("/workspace/files")
+@app.post("/runs/{run_id}/files")
+async def create_workspace_item_endpoint(payload: CreateItemPayload, run_id: str = "run-default"):
+    """Creates a new file or directory in the workspace via ToolExecutor."""
+    from fastapi import HTTPException
+    from sidecar.permissions import default_executor, resolve_safe_path
+    if payload.is_directory:
+        try:
+            target_dir = resolve_safe_path(run_id, payload.path, for_write=True)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            return {"success": True, "path": payload.path, "is_directory": True}
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    else:
+        res = await default_executor.execute(
+            run_id=run_id,
+            agent="user",
+            tool="file_write",
+            args={"path": payload.path, "content": payload.content or ""},
+            context={"web_derived": False},
+            bus=None,
+        )
+        if not res.success:
+            raise HTTPException(status_code=403, detail=res.error)
+        return {"success": True, "path": payload.path, "is_directory": False}
+
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("SWARM_SIDECAR_PORT", 8000))

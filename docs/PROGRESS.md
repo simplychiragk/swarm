@@ -273,3 +273,16 @@
 ### 4. Assumptions Made
 - The permission system provides in-process software guardrails. Multi-tenant hostile untrusted code execution requires containerized or VM sandboxing (documented in `docs/PERMISSIONS.md`).
 - `FORBIDDEN` rules cannot be disabled or bypassed by any environment variable or configuration option under any circumstances.
+
+---
+
+## Stage 6: Real Workspace Files Integration & UI Security Alignment
+
+### 1. What Was Built
+- **Workspace Tree & Files REST Endpoints**: Implemented `GET /workspace/tree`, `GET /workspace/files/{path}`, `PUT /workspace/files/{path}`, and `POST /workspace/files` in `sidecar/main.py`. These endpoints walk `workspace/<run_id>/`, guess file syntax language, and serve file contents for the desktop client's code viewer and file explorer.
+- **Auto-Seeding Starter Project**: Added `seed_default_workspace_if_empty()` to ensure the Section 9 landing page project files (`index.html`, `package.json`, `src/App.tsx`, `api/main.py`, etc.) are pre-populated on disk for instant exploration.
+- **Frontend File Tree Sync**: Updated `app/src/components/Sidebar.tsx` to query `/workspace/tree` on mount and on Refresh, and forward new file and folder creations to `/workspace/files`.
+- **Code Viewer Saving**: Wired `onSaveContent` in `app/src/App.tsx` and `FileViewerModal.tsx` to `PUT /workspace/files/{path}`, persisting edits directly into the run workspace.
+- **Approval Modal Security Metadata**: Enhanced `app/src/components/ApprovalModal.tsx` to display real-time permission context (`tool`, `risk`, `reason`, `args_preview`) and an interactive `"once"` vs `"run"` scope selection toggle.
+- **Tests**: Added `test_workspace_tree_and_file_endpoints` in `sidecar/tests/permissions/test_permissions.py` validating tree listing, file updates, creation, and path traversal rejection.
+

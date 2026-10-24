@@ -57,6 +57,22 @@ export function App() {
     });
   };
 
+  const handleSaveContent = async (path: string, newContent: string) => {
+    try {
+      const cleanPath = path.replace(/^frontend\//, "").replace(/^project\//, "");
+      const res = await fetch(`http://127.0.0.1:8000/workspace/files/${cleanPath}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newContent }),
+      });
+      if (res.ok) {
+        setViewingFile((prev) => (prev ? { ...prev, content: newContent } : null));
+      }
+    } catch (e) {
+      console.error("Failed to save file to workspace:", e);
+    }
+  };
+
   return (
     <div className="retro-desktop-shell">
       {/* Main Split Layout: Left Sidebar + Right Whiteboard Canvas */}
@@ -89,7 +105,7 @@ export function App() {
       {/* Contract #3: Approval Modal */}
       <ApprovalModal
         approval={activeApproval}
-        onDecision={(decision, note) => sendApprovalDecision(decision, note)}
+        onDecision={(decision, note, scope) => sendApprovalDecision(decision, note, scope)}
         onClose={() => setActiveApproval(null)}
       />
 
@@ -104,6 +120,7 @@ export function App() {
       <FileViewerModal
         file={viewingFile}
         onClose={() => setViewingFile(null)}
+        onSaveContent={handleSaveContent}
       />
 
       {/* System Settings & Runtime Config */}

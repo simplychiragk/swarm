@@ -402,3 +402,54 @@ def test_permissions_audit_and_artifact_endpoints():
     # Traversal escape is blocked with 403
     resp_block = client.get(f"/runs/{run_id}/artifacts/..%2f..%2fsidecar%2fmain.py")
     assert resp_block.status_code in (400, 403, 404)
+
+
+@pytest.mark.asyncio
+async def test_workspace_tree_and_file_endpoints():
+    client = TestClient(app)
+    run_id = "test-run-tree"
+    ws = get_run_workspace(run_id)
+
+    # 1. GET /runs/{run_id}/tree
+    resp = client.get(f"/runs/{run_id}/tree")
+    assert resp.status_code == 200
+    tree_data = resp.json()
+    assert tree_data["run_id"] == run_id
+    assert "files" in tree_data
+    assert len(tree_data["files"]) > 0
+
+    # Verify starter file App.tsx is seeded
+    app_file = next((f for f in tree_data["files"] if "App.tsx" in f["name"]), None)
+    assert app_file is not None
+    assert app_file["language"] == "typescript"
+    assert "export default function App" in app_file["content"]
+
+    # 2. PUT /runs/{run_id}/files/src/Custom.tsx
+    new_content = "export const Custom = () => <div>Custom</div>;"
+    put_resp = client.put(
+        f"/runs/{run_id}/files/src/Custom.tsx",
+        json={"content": new_content},
+    )
+    assert put_resp.status_code == 200
+    assert put_resp.json()["success"] is True
+
+    # 3. GET /runs/{run_id}/files/src/Custom.tsx
+    get_resp = client.get(f"/runs/{run_id}/files/src/Custom.tsx")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["content"] == new_content
+
+    # 4. POST /runs/{run_id}/files create new file
+    post_resp = client.post(
+        f"/runs/{run_id}/files",
+        json={"path": "src/NewFile.json", "content": '{"test": true}', "is_directory": False},
+    )
+    assert post_resp.status_code == 200
+    assert post_resp.json()["success"] is True
+
+    # 5. Traversal on PUT is blocked with 403
+    block_resp = client.put(
+        f"/runs/{run_id}/files/..%2f..%2fescape.txt",
+        json={"content": "malicious"},
+    )
+    assert block_resp.status_code in (400, 403)
+

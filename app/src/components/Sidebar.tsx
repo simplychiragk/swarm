@@ -227,6 +227,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       setSelectedFilePath(newFile.path);
       setIsCreatingFile(false);
       setNewItemName("");
+
+      // Sync to backend workspace
+      fetch("http://127.0.0.1:8000/workspace/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: `src/${trimmed}`,
+          content,
+          is_directory: false,
+        }),
+      }).catch((e) => console.warn("Could not sync file to backend:", e));
+
       showToast(`Created file: ${trimmed}`);
       onOpenFile(newFile);
     } else if (isCreatingFolder) {
@@ -234,11 +246,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
       setExpandedFolders((prev) => ({ ...prev, [trimmed]: true }));
       setIsCreatingFolder(false);
       setNewItemName("");
+
+      fetch("http://127.0.0.1:8000/workspace/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: `src/${trimmed}`,
+          is_directory: true,
+        }),
+      }).catch((e) => console.warn("Could not sync folder to backend:", e));
+
       showToast(`Created folder: ${trimmed}`);
     }
   };
 
-  const handleRefreshTree = () => {
+  const fetchWorkspaceTree = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/workspace/tree");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.files && Array.isArray(data.files) && data.files.length > 0) {
+          const newMap: Record<string, ProjectFile> = {};
+          for (const f of data.files) {
+            const displayPath = f.path.startsWith("src/")
+              ? `frontend/${f.path}`
+              : `frontend/src/${f.path}`;
+            newMap[f.name] = {
+              name: f.name,
+              path: displayPath,
+              language: f.language,
+              content: f.content,
+            };
+          }
+          setFilesMap((prev) => ({ ...prev, ...newMap }));
+        }
+      }
+    } catch {
+      // offline/mock fallback
+    }
+  };
+
+  useEffect(() => {
+    fetchWorkspaceTree();
+  }, []);
+
+  const handleRefreshTree = async () => {
     setIsRefreshing(true);
     setExpandedFolders({
       project: true,
@@ -248,10 +300,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       public: true,
       src: true,
     });
-    setTimeout(() => {
-      setIsRefreshing(false);
-      showToast("Files refreshed");
-    }, 400);
+    await fetchWorkspaceTree();
+    setIsRefreshing(false);
+    showToast("Files refreshed from workspace");
   };
 
   const getAgentBadge = (sender: AgentSender) => {

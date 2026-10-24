@@ -220,3 +220,33 @@ Retrieves the recorded SQLite permission audit trail for the specified `run_id`.
 ### 2. `GET /runs/{run_id}/artifacts/{artifact_path:path}`
 Safely retrieves an artifact file created during a run. Path traversal (`..`) outside `workspace/{run_id}/` is strictly rejected with HTTP 403.
 
+### 3. `GET /workspace/tree` or `GET /runs/{run_id}/tree`
+Returns all files in the active run's workspace (`workspace/<run_id>/`) formatted for the UI file explorer:
+```json
+{
+  "run_id": "run-default",
+  "workspace": "workspace/run-default",
+  "files": [
+    {
+      "name": "App.tsx",
+      "path": "src/App.tsx",
+      "language": "typescript",
+      "content": "...",
+      "size": 1024
+    }
+  ],
+  "count": 1
+}
+```
+
+### 4. `PUT /workspace/files/{file_path:path}` or `PUT /runs/{run_id}/files/{file_path:path}`
+Saves updated file content to the run's workspace via `ToolExecutor` (audited, path-safe, non-traversal):
+**Request**: `{"content": "new code here"}`
+**Response**: `{"success": true, "path": "src/App.tsx", "bytes": 1024}`
+
+### 5. `POST /workspace/files` or `POST /runs/{run_id}/files`
+Creates a new file or directory inside the run workspace:
+**Request**: `{"path": "src/components/Header.tsx", "content": "export ...", "is_directory": false}`
+**Response**: `{"success": true, "path": "src/components/Header.tsx", "is_directory": false}`
+
+

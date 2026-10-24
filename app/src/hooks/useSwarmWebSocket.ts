@@ -173,7 +173,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
   }, []);
 
   const sendApprovalDecision = useCallback(
-    (decision: "approve" | "redirect", note?: string) => {
+    (decision: "approve" | "redirect", note?: string, scope?: "once" | "run") => {
       if (!activeApproval) return;
 
       const approvalId = activeApproval.id;
@@ -187,6 +187,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
         approval_id: approvalId,
         card_id: cardId,
         decision,
+        scope: scope || "once",
         note: note || (decision === "approve" ? "Approved by user" : "Redirected by user"),
       };
 
