@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import type { ApprovalRequest } from "../types/contracts";
-import { ShieldCheck, AlertCircle, ArrowRight, CornerDownLeft, Sparkles } from "lucide-react";
+import { ShieldCheck, AlertCircle, ArrowRight, CornerDownLeft, Sparkles, X } from "lucide-react";
 
 interface ApprovalModalProps {
   approval: ApprovalRequest | null;
@@ -54,9 +54,21 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
               </span>
             </div>
           </div>
-          <span className="lane-badge-chip">
-            Lane: {approval.lane}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span className="lane-badge-chip">
+              Lane: {approval.lane}
+            </span>
+            {onClose && (
+              <button
+                type="button"
+                className="retro-icon-btn"
+                onClick={onClose}
+                aria-label="Close approval dialog"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Content Body */}

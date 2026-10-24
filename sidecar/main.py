@@ -43,6 +43,7 @@ logger = logging.getLogger("swarm.sidecar")
 
 decision_engine = RuleBasedDecisionLayer()
 active_run_manager: RunManager = SwarmRunManager()
+mock_auto_started = False
 
 
 def get_swarm_mode() -> str:
@@ -124,6 +125,15 @@ async def handle_inbound_envelope(envelope: InboundEnvelope) -> None:
 
         elif envelope.event == "approval_response":
             approval_resp: ApprovalResponse = envelope.payload
+            # Scrub any matching approval_request from broadcaster history so it never replays
+            broadcaster.history = [
+                evt for evt in broadcaster.history
+                if not (
+                    isinstance(evt, dict)
+                    and evt.get("event") == "approval_request"
+                    and evt.get("payload", {}).get("card_id") == approval_resp.card_id
+                )
+            ]
             new_status = CardStatus.DONE if approval_resp.decision == "approve" else CardStatus.FAILED
             card_title = "Production Release Gate"
             card_summary = (
@@ -176,10 +186,12 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await broadcaster.connect(websocket)
 
-    # In mock mode, auto-trigger the mock scenario on client connection if not already running
-    # In live mode, mock runner must NOT auto-start!
-    if get_swarm_mode() == "mock" and not mock_runner.is_running:
-        logger.info("New client connected in mock mode; initiating mock scenario stream.")
+    global mock_auto_started
+    # In mock mode, auto-trigger the mock scenario ONCE on the very first client connection.
+    # Do NOT auto-trigger on reconnects or subsequent connections!
+    if get_swarm_mode() == "mock" and not mock_auto_started and not mock_runner.is_running:
+        mock_auto_started = True
+        logger.info("Initial client connected in mock mode; initiating mock scenario stream once.")
         mock_runner.start(delay_seconds=1.2)
 
     try:
@@ -225,8 +237,10 @@ async def start_mock_scenario(req: Optional[MockControlRequest] = None):
 @app.post("/mock/reset")
 async def reset_mock_scenario():
     """Reset history and stop any active mock stream."""
+    global mock_auto_started
     mock_runner.stop()
     broadcaster.clear_history()
+    mock_auto_started = False
     return {"status": "reset", "history_len": 0}
 
 
