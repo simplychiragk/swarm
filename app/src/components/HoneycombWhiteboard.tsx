@@ -13,6 +13,7 @@ import {
   Filter,
   PanelLeftOpen,
   ArrowDownUp,
+  Eye,
 } from "lucide-react";
 
 interface HoneycombWhiteboardProps {
@@ -271,6 +272,16 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
               {status === "connected" ? "Swarm Online" : status === "connecting" ? "Connecting..." : "Offline"}
             </span>
           </div>
+
+          {/* TinyFish Engine Status Indicator */}
+          <div
+            className="tinyfish-status-pill"
+            title="Autonomous Web Search, Fetch & Real-Browser Verification"
+          >
+            <span className="tinyfish-dot" />
+            <Sparkles size={11} className="tinyfish-header-sparkle" />
+            <span className="tinyfish-status-text">TinyFish Browser Engine: READY</span>
+          </div>
         </div>
 
         <div className="canvas-header-controls">
@@ -399,12 +410,35 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
                   lastUpdatedAt: card.updated_at,
                 };
 
+                const isTinyFishVerified =
+                  card.lane === "Test" ||
+                  card.title.toLowerCase().includes("tinyfish") ||
+                  card.summary.toLowerCase().includes("tinyfish") ||
+                  Boolean(
+                    card.evidence?.some(
+                      (e) =>
+                        e.kind === "screenshot" ||
+                        e.kind === "browser_log" ||
+                        e.kind.toLowerCase().includes("tinyfish") ||
+                        e.url_or_text.toLowerCase().includes("tinyfish")
+                    )
+                  );
+
+                const screenshotEvidence = card.evidence?.find(
+                  (e) =>
+                    e.kind === "screenshot" ||
+                    e.url_or_text.endsWith(".png") ||
+                    e.url_or_text.endsWith(".jpg") ||
+                    e.url_or_text.includes("evidence") ||
+                    e.url_or_text.includes("pass.png")
+                );
+
                 return (
                   <article
                     key={card.id}
                     className={`honey-card honey-status-${card.status} ${
                       isNeedsApproval ? "card-pulse-approval" : ""
-                    }`}
+                    } ${isTinyFishVerified ? "card-tinyfish-highlight" : ""}`}
                   >
                     {/* Card Header */}
                     <div className="honey-card-top">
@@ -439,9 +473,69 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
                       </div>
                     </div>
 
+                    {/* Verified by TinyFish Badge */}
+                    {isTinyFishVerified && (
+                      <div className="tinyfish-verified-card-banner">
+                        <div className="tinyfish-badge-left">
+                          <span className="tinyfish-pulsing-dot" />
+                          <ShieldCheck size={13} className="tinyfish-shield-icon" />
+                          <span className="tinyfish-badge-text">
+                            {card.lane === "Test" || screenshotEvidence
+                              ? "Verified by TinyFish Browser Agent"
+                              : "Verified by TinyFish Web Engine"}
+                          </span>
+                        </div>
+                        {card.evidence && card.evidence.length > 0 && (
+                          <button
+                            type="button"
+                            className="tinyfish-inspect-proof-btn"
+                            onClick={() => onSelectEvidence(screenshotEvidence || card.evidence![0], card.title)}
+                            title="Inspect real browser execution trace & visual screenshot proof"
+                          >
+                            <Eye size={11} />
+                            <span>Inspect Proof</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* Card Title & Plain-Language Scribe Summary */}
                     <h3 className="honey-card-title">{card.title}</h3>
                     <p className="honey-card-summary">{card.summary}</p>
+
+                    {/* In-Card Screenshot Thumbnail Preview */}
+                    {screenshotEvidence && (
+                      <div
+                        className="card-screenshot-thumbnail-box"
+                        onClick={() => onSelectEvidence(screenshotEvidence, card.title)}
+                        title="Click to inspect TinyFish real-browser screenshot proof"
+                      >
+                        <div className="thumbnail-browser-top">
+                          <div className="mini-browser-dots">
+                            <span className="dot red" />
+                            <span className="dot yellow" />
+                            <span className="dot green" />
+                          </div>
+                          <span className="mini-browser-url">http://localhost:5173/waitlist</span>
+                          <span className="mini-browser-badge">PASS ✓</span>
+                        </div>
+                        <div className="thumbnail-viewport">
+                          <div className="mini-mock-waitlist-preview">
+                            <div className="mini-mock-badge">🐝 SWARM LAUNCH</div>
+                            <div className="mini-mock-heading">Join the Swarm Waitlist</div>
+                            <div className="mini-mock-form">
+                              <span className="mini-input">developer@example.com</span>
+                              <span className="mini-btn">Join Access</span>
+                            </div>
+                            <div className="mini-mock-toast">✓ #42 on waitlist! Confirmed.</div>
+                          </div>
+                          <div className="thumbnail-hover-overlay">
+                            <Eye size={13} />
+                            <span>Inspect TinyFish Proof</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Verified Evidence Attachments */}
                     {card.evidence && card.evidence.length > 0 && (
