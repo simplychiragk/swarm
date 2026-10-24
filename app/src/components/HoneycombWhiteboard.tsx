@@ -175,14 +175,6 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
         {/* Background Dot Matrix pattern */}
         <div className="canvas-dot-matrix" />
 
-        {/* Bottom-right decorative dot cluster & Sparkle Star (matches design) */}
-        <div className="canvas-corner-accent">
-          <div className="corner-dot-cluster" />
-          <div className="corner-sparkle-star">
-            <Sparkles size={24} strokeWidth={1.8} />
-          </div>
-        </div>
-
         {cards.length === 0 ? (
           /* Empty State - Exact Match to Uploaded Design with Honey Progress & Hover Checklist */
           <div className="empty-whiteboard-view">

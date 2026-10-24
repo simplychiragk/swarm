@@ -1276,22 +1276,6 @@ body {
   z-index: 0;
 }
 
-/* Bottom-right Corner Dot Cluster & Sparkle Star */
-.canvas-corner-accent {
-  position: absolute;
-  bottom: 24px;
-  right: 24px;
-  pointer-events: none;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.corner-sparkle-star {
-  color: #D6C29E;
-  opacity: 0.85;
-}
 
 /* EMPTY STATE VIEW (Matches design image center) */
 .empty-whiteboard-view {
