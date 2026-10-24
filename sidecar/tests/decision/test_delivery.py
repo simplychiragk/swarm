@@ -3,6 +3,7 @@ Tests for Stage 11: Decision Layer Message Delivery, Jev Fallback, and Whiteboar
 """
 
 import os
+import uuid
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,7 +21,7 @@ from sidecar.main import app
 
 @pytest.mark.asyncio
 async def test_decide_delivery_rules(monkeypatch, tmp_path):
-    run_id = "run-decision-test-1"
+    run_id = f"run-decision-test-{uuid.uuid4().hex[:6]}"
     db_file = tmp_path / "decisions.db"
     monkeypatch.setenv("SWARM_DB_PATH", str(db_file))
 
@@ -94,7 +95,7 @@ async def test_decide_delivery_rules(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_delivery_decisions_persistence_and_stats(monkeypatch, tmp_path):
-    run_id = "run-decision-persist"
+    run_id = f"run-decision-persist-{uuid.uuid4().hex[:6]}"
     db_file = tmp_path / "decisions_persist.db"
     monkeypatch.setenv("SWARM_DB_PATH", str(db_file))
 

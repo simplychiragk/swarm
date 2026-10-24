@@ -16,7 +16,7 @@
 | Stage 9 | Demo safety (golden run recorder, offline demo mode, DEMO.md script) | done |
 | Stage 10 | Steering running swarm (steer, queue, interrupt, plan diff, receipts) | done |
 | Stage 11 | Decision layer message delivery (rules guard, optional Jev) | done |
-| Stage 12 | End-to-end harness & UI handoff (scripts/e2e_mock.py, e2e_live.py, UI_HANDOFF.md) | not started |
+| Stage 12 | End-to-end harness & UI handoff (scripts/e2e_mock.py, e2e_live.py, UI_HANDOFF.md) | done |
 | Stage 13 | The Gauntlet (persona testing, HTML report) [COULD] | not started |
 
 ---
@@ -492,6 +492,17 @@
 - **Whiteboard Filtering with Confidence (`should_show_on_whiteboard`)**: Scribe asks the decision layer whether a message warrants card generation; high-confidence milestones and evidence become cards, while low-confidence back-and-forth chatter stays in the nectar feed.
 - **Ops Whiteboard Card Integration & REST API**: Computed delivery statistics (`total, delivered, dropped, summarized, avg_confidence`) and attached them as a `decision_engine` evidence entry to the Ops Provenance summary card. Added `GET /runs/{run_id}/decisions/delivery` endpoint.
 - **Unit Tests**: Implemented `sidecar/tests/decision/test_delivery.py` (4 tests validating delivery rules, persistence and stats calculation, Jev timeout fallback, and whiteboard filtering confidence). Full test suite now 61/61 passing.
+
+---
+
+## Stage 12: End-to-End Test Harness & UI Handoff
+
+### 1. What Was Built
+- **Automated Mock E2E Harness (`scripts/e2e_mock.py`)**: Headless integration runner that spawns sidecar with `SWARM_MODE=mock` on a dynamic port, connects via WebSocket, sends initial prompt, answers interview questions, handles approval gate, asserts event reception, verifies SQLite event persistence and workspace files, and cleanly exits in < 3s (well under the 15s budget).
+- **Automated Live E2E Harness (`scripts/e2e_live.py`)**: Headless live runner executing real multi-agent pipeline with real TinyFish API integration, browser QA verification, release gate approval, and asserting `provenance: 'real'` across all persisted events.
+- **UI Handoff Specification (`docs/UI_HANDOFF.md`)**: Comprehensive integration guide for the frontend engineer documenting all event types (`feed_message`, `card_upsert`, `approval_request`, `agent_status`, `feed_chunk`, `plan_diff`), steering modes, provenance indicators, whiteboard badges (`[EDITED]`), live preview URLs, and complete REST API table.
+- **Git & Secret Scan**: Verified git history and current working tree against all ambient environment variables and API key patterns. Zero leaks found.
+
 
 
 

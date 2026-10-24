@@ -202,6 +202,9 @@ async def handle_inbound_envelope(envelope: InboundEnvelope, run_id: str = "run-
 
     else:
         # Live mode delegates to RunManager
+        active_run_manager.run_id = run_id
+        active_run_manager.bus.run_id = run_id
+
         if envelope.event == "user_message":
             await active_run_manager.handle_user_message(envelope.payload)
         elif envelope.event == "approval_response":
