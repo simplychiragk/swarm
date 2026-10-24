@@ -1,28 +1,32 @@
 import React, { useEffect, useState, useRef } from "react";
-import type { EventEnvelope } from "./types/contracts";
+import type {
+  EventEnvelope,
+  FeedMessage,
+  WhiteboardCard,
+  ApprovalRequest,
+} from "./types/contracts";
 import "./App.css";
 
-const DEFAULT_WS_URL = "ws://localhost:8000/ws";
-
-interface ReceivedEvent {
-  receivedAt: string;
-  data: EventEnvelope;
-}
+const DEFAULT_WS_URL = "ws://127.0.0.1:8000/ws";
 
 export function App() {
-  const [wsUrl, setWsUrl] = useState<string>(DEFAULT_WS_URL);
   const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
-  const [events, setEvents] = useState<ReceivedEvent[]>([]);
-  const socketRef = useRef<WebSocket | null>(null);
+  const [messages, setMessages] = useState<FeedMessage[]>([]);
+  const [cards, setCards] = useState<Record<string, WhiteboardCard>>({});
+  const [activeApproval, setActiveApproval] = useState<ApprovalRequest | null>(null);
+  const [userInput, setUserInput] = useState<string>("");
 
-  const connect = (url: string) => {
+  const socketRef = useRef<WebSocket | null>(null);
+  const feedEndRef = useRef<HTMLDivElement | null>(null);
+
+  const connect = () => {
     if (socketRef.current) {
       socketRef.current.close();
     }
 
     setStatus("connecting");
     try {
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(DEFAULT_WS_URL);
 
       ws.onopen = () => {
         setStatus("connected");
@@ -30,37 +34,34 @@ export function App() {
 
       ws.onmessage = (event) => {
         try {
-          const parsed = JSON.parse(event.data) as EventEnvelope;
-          setEvents((prev) => [
-            {
-              receivedAt: new Date().toLocaleTimeString(),
-              data: parsed,
-            },
-            ...prev,
-          ]);
+          const envelope = JSON.parse(event.data) as EventEnvelope;
+          if (envelope.event === "feed_message") {
+            setMessages((prev) => [...prev, envelope.payload]);
+          } else if (envelope.event === "card_upsert") {
+            setCards((prev) => ({
+              ...prev,
+              [envelope.payload.id]: envelope.payload,
+            }));
+          } else if (envelope.event === "approval_request") {
+            setActiveApproval(envelope.payload);
+          }
         } catch (err) {
-          console.error("Failed to parse WebSocket event:", err, event.data);
+          console.error("Failed to parse event:", err);
         }
       };
 
-      ws.onclose = () => {
-        setStatus("disconnected");
-      };
-
-      ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
-        setStatus("disconnected");
-      };
+      ws.onclose = () => setStatus("disconnected");
+      ws.onerror = () => setStatus("disconnected");
 
       socketRef.current = ws;
     } catch (e) {
-      console.error("Error creating WebSocket:", e);
+      console.error("WebSocket init error:", e);
       setStatus("disconnected");
     }
   };
 
   useEffect(() => {
-    connect(wsUrl);
+    connect();
     return () => {
       if (socketRef.current) {
         socketRef.current.close();
@@ -68,85 +69,256 @@ export function App() {
     };
   }, []);
 
-  const handleReconnect = (e: React.FormEvent) => {
+  useEffect(() => {
+    feedEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    connect(wsUrl);
+    if (!userInput.trim() || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const payload = {
+      id: `user-msg-${Date.now()}`,
+      text: userInput.trim(),
+      timestamp: new Date().toISOString(),
+    };
+
+    socketRef.current.send(
+      JSON.stringify({
+        event: "user_message",
+        payload,
+      })
+    );
+
+    // Also optimistically add to local feed as user message
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: payload.id,
+        timestamp: payload.timestamp,
+        sender: "system",
+        lane: "none",
+        type: "chat",
+        content: `You: ${payload.text}`,
+      },
+    ]);
+
+    setUserInput("");
   };
 
-  const handleClear = () => {
-    setEvents([]);
+  const handleApprovalDecision = (decision: "approve" | "redirect") => {
+    if (!activeApproval || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    socketRef.current.send(
+      JSON.stringify({
+        event: "approval_response",
+        payload: {
+          approval_id: activeApproval.id,
+          card_id: activeApproval.card_id,
+          decision,
+          note: decision === "approve" ? "Approved by user" : "Redirected by user",
+        },
+      })
+    );
+
+    setActiveApproval(null);
   };
+
+  const handleTriggerRun = async () => {
+    try {
+      await fetch("http://127.0.0.1:8000/mock/start", { method: "POST" });
+    } catch (e) {
+      console.error("Trigger error:", e);
+    }
+  };
+
+  const handleResetBoard = async () => {
+    try {
+      await fetch("http://127.0.0.1:8000/mock/reset", { method: "POST" });
+      setMessages([]);
+      setCards({});
+      setActiveApproval(null);
+    } catch (e) {
+      console.error("Reset error:", e);
+    }
+  };
+
+  const cardList = Object.values(cards);
 
   return (
-    <main className="swarm-container">
-      <header className="swarm-header">
-        <div className="swarm-title-group">
-          <h1>Swarm Contract Debug Shell</h1>
-          <p>Listening to sidecar WebSocket stream & printing raw EventEnvelope payloads</p>
+    <div className="app-shell">
+      {/* Top Header */}
+      <header className="app-header">
+        <div className="brand-section">
+          <span className="brand-icon" role="img" aria-label="bee">
+            🐝
+          </span>
+          <div>
+            <h1 className="brand-title">Swarm</h1>
+          </div>
+          <span className="brand-subtitle">Honeycomb Workspace</span>
         </div>
 
-        <div className={`status-badge status-${status}`}>
-          <span className="status-dot" aria-hidden="true" />
-          <span>{status.toUpperCase()}</span>
+        <div className="header-status-group">
+          <div className={`status-pill status-${status}`}>
+            <span className="status-dot" aria-hidden="true" />
+            <span>{status.toUpperCase()}</span>
+          </div>
+
+          <button onClick={handleTriggerRun} className="btn btn-primary" type="button">
+            ▶ Run Demo Scenario
+          </button>
+          <button onClick={handleResetBoard} className="btn btn-secondary" type="button">
+            ↺ Reset
+          </button>
         </div>
       </header>
 
-      <section aria-label="Connection controls" className="swarm-controls">
-        <form onSubmit={handleReconnect} style={{ display: "flex", gap: "8px" }}>
-          <input
-            type="text"
-            className="swarm-input"
-            value={wsUrl}
-            onChange={(e) => setWsUrl(e.target.value)}
-            aria-label="WebSocket URL"
-            placeholder="ws://localhost:8000/ws"
-          />
-          <button type="submit" className="swarm-btn">
-            Connect
-          </button>
-        </form>
-        <button type="button" onClick={handleClear} className="swarm-btn swarm-btn-secondary">
-          Clear Events ({events.length})
-        </button>
-      </section>
+      {/* Main Two-Column View */}
+      <main className="app-main">
+        {/* Left Column: Live Agent Chatter Feed (Nectar) */}
+        <aside className="feed-aside" aria-label="Agent Chat Feed">
+          <header className="feed-header">
+            <h2>Nectar Feed ({messages.length})</h2>
+          </header>
 
-      <section aria-label="Event Stream" className="events-section">
-        <header className="events-header">
-          <h2>Live Streamed Events</h2>
-          <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-            Showing {events.length} event(s)
-          </span>
-        </header>
+          <div className="feed-scroll-area">
+            {messages.length === 0 ? (
+              <p style={{ color: "var(--color-text-dim)", fontSize: "12px", textAlign: "center", marginTop: "32px" }}>
+                Waiting for agent chatter... Click "Run Demo Scenario" above.
+              </p>
+            ) : (
+              messages.map((m) => {
+                const senderClass = `badge-${m.sender}`;
+                return (
+                  <article key={m.id} className="feed-msg-item">
+                    <header className="feed-msg-meta">
+                      <span className={`agent-badge ${senderClass}`}>
+                        {m.sender === "queen" && "👑 Queen"}
+                        {m.sender === "worker" && "⚙️ Worker"}
+                        {m.sender === "scribe" && "📜 Scribe"}
+                        {m.sender === "qa" && "🧪 QA Bee"}
+                        {m.sender === "research" && "🔍 Research Bee"}
+                        {m.sender === "system" && "👤 System / User"}
+                      </span>
+                      {m.lane !== "none" && <span className="lane-tag">{m.lane}</span>}
+                    </header>
+                    <p className="feed-msg-body">{m.content}</p>
+                  </article>
+                );
+              })
+            )}
+            <div ref={feedEndRef} />
+          </div>
 
-        {events.length === 0 ? (
-          <div className="empty-state">
-            <p>Waiting for events from sidecar at <code>{wsUrl}</code>...</p>
-            <p style={{ marginTop: "8px", fontSize: "12px" }}>
-              Make sure the sidecar is running (<code>python -m uvicorn sidecar.main:app --port 8000</code>).
-            </p>
+          <form onSubmit={handleSendMessage} className="feed-input-bar">
+            <input
+              type="text"
+              className="feed-input"
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              placeholder="Send instruction or answer to Queen..."
+              aria-label="User input message"
+            />
+            <button type="submit" className="btn btn-primary">
+              Send
+            </button>
+          </form>
+        </aside>
+
+        {/* Right Column: Honeycomb Whiteboard (Honey) */}
+        <section className="board-section" aria-label="Honeycomb Whiteboard">
+          {/* Active Approval Banner if flagged */}
+          {activeApproval && (
+            <section className="approval-banner" aria-label="Approval Gate">
+              <header className="approval-banner-header">
+                <span className="approval-icon" role="img" aria-label="shield">
+                  🛡️
+                </span>
+                <h3 className="approval-title">Decision Layer: User Approval Required</h3>
+              </header>
+              <p className="approval-prompt">{activeApproval.prompt}</p>
+              <div className="approval-actions">
+                <button
+                  type="button"
+                  onClick={() => handleApprovalDecision("approve")}
+                  className="btn btn-approve"
+                >
+                  ✓ Approve & Deploy Live
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApprovalDecision("redirect")}
+                  className="btn btn-redirect"
+                >
+                  ✕ Request Revision
+                </button>
+              </div>
+            </section>
+          )}
+
+          <header className="board-header">
+            <div className="board-title-group">
+              <h2>Honeycomb Whiteboard</h2>
+              <p>Clean plain-language milestone summaries curated by the Scribe Bee</p>
+            </div>
+            <span style={{ fontSize: "12px", color: "var(--color-text-dim)" }}>
+              {cardList.length} card(s) active
+            </span>
+          </header>
+
+          <div className="cards-grid">
+            {cardList.length === 0 ? (
+              <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "64px 16px", color: "var(--color-text-dim)" }}>
+                <p style={{ fontSize: "14px" }}>No cards on the whiteboard yet.</p>
+                <p style={{ fontSize: "12px", marginTop: "8px" }}>
+                  When agents complete discovery and tasks, Scribe posts honey cards here.
+                </p>
+              </div>
+            ) : (
+              cardList.map((card) => {
+                const statusClass = `card-status-${card.status}`;
+                const pillClass = `pill-${card.status}`;
+                return (
+                  <article key={card.id} className={`whiteboard-card ${statusClass}`}>
+                    <header className="card-top">
+                      <span className="card-lane-badge">{card.lane}</span>
+                      <span className={`card-status-pill ${pillClass}`}>
+                        {card.status.replace("_", " ")}
+                      </span>
+                    </header>
+
+                    <h3 className="card-title">{card.title}</h3>
+                    <p className="card-summary">{card.summary}</p>
+
+                    {card.evidence && card.evidence.length > 0 && (
+                      <footer className="evidence-container">
+                        <span style={{ fontSize: "10px", color: "var(--color-text-dim)", textTransform: "uppercase", fontWeight: 700 }}>
+                          Verified Evidence:
+                        </span>
+                        {card.evidence.map((item, idx) => (
+                          <span key={idx} className="evidence-tag">
+                            {item.kind === "screenshot" && "📸 Screenshot: "}
+                            {item.kind === "tinyfish_search" && "🔍 TinyFish: "}
+                            {item.kind === "browser_log" && "🧪 Assertion: "}
+                            {item.kind !== "screenshot" && item.kind !== "tinyfish_search" && item.kind !== "browser_log" && "📎 "}
+                            {item.url_or_text}
+                          </span>
+                        ))}
+                      </footer>
+                    )}
+                  </article>
+                );
+              })
+            )}
           </div>
-        ) : (
-          <div className="events-list">
-            {events.map((evt, idx) => {
-              const eventType = evt.data.event;
-              return (
-                <article key={`${evt.receivedAt}-${idx}`} className="event-card">
-                  <header className="event-card-header">
-                    <span className={`event-type-tag event-type-${eventType}`}>
-                      {eventType}
-                    </span>
-                    <time dateTime={evt.receivedAt}>{evt.receivedAt}</time>
-                  </header>
-                  <pre className="event-raw-json">
-                    {JSON.stringify(evt.data, null, 2)}
-                  </pre>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-    </main>
+        </section>
+      </main>
+    </div>
   );
 }
 
