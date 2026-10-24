@@ -371,6 +371,16 @@ async def get_run_steers_endpoint(run_id: str):
     return {"run_id": run_id, "steers": items, "count": len(items)}
 
 
+@app.get("/runs/{run_id}/decisions/delivery")
+async def get_run_delivery_decisions_endpoint(run_id: str):
+    """Get delivery decisions and stats logged by the DecisionLayer for a run."""
+    from sidecar.storage import get_storage
+    storage = get_storage()
+    items = storage.get_run_delivery_decisions(run_id)
+    stats = storage.get_delivery_stats(run_id)
+    return {"run_id": run_id, "decisions": items, "stats": stats, "count": len(items)}
+
+
 class ReplayRequest(BaseModel):
     speed: float = 1.0
     delay_seconds: Optional[float] = None

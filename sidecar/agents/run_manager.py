@@ -85,16 +85,24 @@ class SwarmRunManager(RunManager):
             self.research_bee = ResearchBee(self.bus)
             self.qa_bee = QABee(self.bus)
 
-        # Route messages to specific agent inboxes
+        # Route messages to specific agent inboxes with DecisionLayer filtering
         async def message_router(msg: FeedMessage) -> None:
             if self.queen:
-                await self.queen.receive(msg)
-            if self.be_worker and (msg.lane == Lane.BE or msg.type == MessageType.TASK):
-                await self.be_worker.receive(msg)
-            if self.fe_worker and (msg.lane == Lane.FE or msg.type == MessageType.TASK):
-                await self.fe_worker.receive(msg)
+                d = self.decision_layer.decide_delivery(msg, "queen", run_id=self.run_id)
+                if d.get("action") != "drop":
+                    await self.queen.receive(msg)
+            if self.be_worker and (msg.lane == Lane.BE or msg.type == MessageType.TASK or msg.channel in ("build", "qa")):
+                d = self.decision_layer.decide_delivery(msg, "be_worker", run_id=self.run_id)
+                if d.get("action") != "drop":
+                    await self.be_worker.receive(msg)
+            if self.fe_worker and (msg.lane == Lane.FE or msg.type == MessageType.TASK or msg.channel in ("build", "qa")):
+                d = self.decision_layer.decide_delivery(msg, "fe_worker", run_id=self.run_id)
+                if d.get("action") != "drop":
+                    await self.fe_worker.receive(msg)
             if self.scribe:
-                await self.scribe.receive(msg)
+                d = self.decision_layer.decide_delivery(msg, "scribe", run_id=self.run_id)
+                if d.get("action") != "drop":
+                    await self.scribe.receive(msg)
 
         self.bus.subscribe(message_router)
 
@@ -139,6 +147,24 @@ class SwarmRunManager(RunManager):
 
         if not evidence_items:
             evidence_items.append(EvidenceItem(kind="provenance", url_or_text="Pipeline executed [SIMULATED]"))
+
+        # Attach Decision Engine statistics if available
+        try:
+            from sidecar.storage import get_storage
+            stats = get_storage().get_delivery_stats(self.run_id)
+            if stats.get("total", 0) > 0:
+                evidence_items.append(
+                    EvidenceItem(
+                        kind="decision_engine",
+                        url_or_text=(
+                            f"Decision Engine: {stats['total']} messages evaluated "
+                            f"({stats['delivered']} delivered, {stats['dropped']} dropped, {stats['summarized']} summarized). "
+                            f"Avg confidence: {stats['avg_confidence']}"
+                        ),
+                    )
+                )
+        except Exception as exc:
+            logger.debug(f"Could not load decision stats for summary card: {exc}")
 
         summary_text = (
             f"Run Audit: {len(tool_records)} tool calls ({real_count} real, {sim_count} simulated). "

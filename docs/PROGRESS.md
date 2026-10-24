@@ -15,7 +15,7 @@
 | Stage 8 | End-to-end hardening of core path (live runs, pacing, provenance summary card) | done |
 | Stage 9 | Demo safety (golden run recorder, offline demo mode, DEMO.md script) | done |
 | Stage 10 | Steering running swarm (steer, queue, interrupt, plan diff, receipts) | done |
-| Stage 11 | Decision layer message delivery (rules guard, optional Jev) | not started |
+| Stage 11 | Decision layer message delivery (rules guard, optional Jev) | done |
 | Stage 12 | End-to-end harness & UI handoff (scripts/e2e_mock.py, e2e_live.py, UI_HANDOFF.md) | not started |
 | Stage 13 | The Gauntlet (persona testing, HTML report) [COULD] | not started |
 
@@ -480,6 +480,19 @@
 - **SQLite Steering Receipts**: Implemented `record_steer` and `get_run_steers` in `StorageService` saving steer receipts (`id, run_id, message_id, mode, status, prompt, plan_diff_json, targets_json, timestamp`). Added `GET /runs/{run_id}/steers` endpoint to `sidecar/main.py`.
 - **Documentation**: Authored `docs/STEERING.md` detailing steering modes, diff schemas, and UI synchronization.
 - **Tests**: Implemented `sidecar/tests/agents/test_steering.py` testing `queue`, `interrupt`, and mid-run phone field additions. All 57 tests green.
+
+---
+
+## Stage 11: Decision Layer Message Delivery (Rules Guard & Optional Jev)
+
+### 1. What Was Built
+- **Message Delivery Filtering (`decide_delivery`)**: Implemented intelligent message routing across agent inboxes (`deliver`, `drop`, `summarize`) with confidence scores. Prevents message spam by dropping directed messages intended for other peers, filtering raw database/SQL messages from frontend workers, and filtering CSS styling details from backend workers.
+- **Optional Jev Model Call with 500ms Fallback**: Structured `_query_jev` with a strict 500ms timeout. If `JEV_API_KEY` is provided and the model endpoint fails or times out, execution seamlessly falls back to deterministic rules. The demo never hangs or crashes.
+- **SQLite Delivery Decision Audit (`delivery_decisions` table)**: Persisted every delivery evaluation (`run_id, message_id, receiver, action, confidence, backend, latency_ms, timestamp`).
+- **Whiteboard Filtering with Confidence (`should_show_on_whiteboard`)**: Scribe asks the decision layer whether a message warrants card generation; high-confidence milestones and evidence become cards, while low-confidence back-and-forth chatter stays in the nectar feed.
+- **Ops Whiteboard Card Integration & REST API**: Computed delivery statistics (`total, delivered, dropped, summarized, avg_confidence`) and attached them as a `decision_engine` evidence entry to the Ops Provenance summary card. Added `GET /runs/{run_id}/decisions/delivery` endpoint.
+- **Unit Tests**: Implemented `sidecar/tests/decision/test_delivery.py` (4 tests validating delivery rules, persistence and stats calculation, Jev timeout fallback, and whiteboard filtering confidence). Full test suite now 61/61 passing.
+
 
 
 

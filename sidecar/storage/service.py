@@ -419,6 +419,61 @@ class StorageService:
             results.append(d)
         return results
 
+    # --- Delivery Decisions (Decision Layer / Jev) ---
+    def record_delivery_decision(
+        self,
+        run_id: str,
+        message_id: str,
+        receiver: str,
+        action: str,
+        confidence: float,
+        backend: str,
+        latency_ms: float,
+    ) -> int:
+        self.ensure_run(run_id)
+        cur = self.db.execute_write(
+            """
+            INSERT INTO delivery_decisions (run_id, message_id, receiver, action, confidence, backend, latency_ms, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (run_id, message_id, receiver, action, confidence, backend, latency_ms, now_iso()),
+        )
+        return cur
+
+    def get_run_delivery_decisions(self, run_id: str) -> List[Dict[str, Any]]:
+        cur = self.db.execute_read(
+            "SELECT * FROM delivery_decisions WHERE run_id = ? ORDER BY id ASC;",
+            (run_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    def get_delivery_stats(self, run_id: str) -> Dict[str, Any]:
+        cur = self.db.execute_read(
+            """
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN action = 'deliver' THEN 1 ELSE 0 END) as delivered,
+                SUM(CASE WHEN action = 'drop' THEN 1 ELSE 0 END) as dropped,
+                SUM(CASE WHEN action = 'summarize' THEN 1 ELSE 0 END) as summarized,
+                AVG(confidence) as avg_confidence,
+                AVG(latency_ms) as avg_latency_ms
+            FROM delivery_decisions
+            WHERE run_id = ?;
+            """,
+            (run_id,),
+        )
+        row = cur.fetchone()
+        if not row or not row["total"]:
+            return {"total": 0, "delivered": 0, "dropped": 0, "summarized": 0, "avg_confidence": 1.0, "avg_latency_ms": 0.0}
+        return {
+            "total": row["total"] or 0,
+            "delivered": row["delivered"] or 0,
+            "dropped": row["dropped"] or 0,
+            "summarized": row["summarized"] or 0,
+            "avg_confidence": round(row["avg_confidence"] or 1.0, 2),
+            "avg_latency_ms": round(row["avg_latency_ms"] or 0.0, 2),
+        }
+
 
 _storage_instance: Optional[StorageService] = None
 

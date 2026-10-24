@@ -30,3 +30,16 @@ class DecisionLayer(ABC):
         Filters raw agent messages (nectar) to determine if it should produce a whiteboard card (honey).
         """
         pass
+
+    @abstractmethod
+    def decide_delivery(
+        self,
+        message: FeedMessage,
+        receiver: str,
+        run_id: str = "run-default",
+    ) -> Dict[str, Any]:
+        """
+        Filters message delivery across agent inboxes.
+        Returns: {action: 'deliver' | 'drop' | 'summarize', confidence: float, backend: str, latency_ms: float}
+        """
+        pass
