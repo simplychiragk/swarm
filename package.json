@@ -1,0 +1,12 @@
+{
+  "name": "swarm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A team of AI agents that builds with you, in the open",
+  "scripts": {
+    "sidecar": "python -m uvicorn sidecar.main:app --port 8000 --reload",
+    "app": "npm --prefix app run tauri dev",
+    "app:web": "npm --prefix app run dev",
+    "app:build": "npm --prefix app run build"
+  }
+}
