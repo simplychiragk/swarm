@@ -143,7 +143,42 @@ In this mode:
 
 ---
 
-## 6. Resetting State
+## 6. Autonomous Gauntlet Persona Audit
+
+After a project is generated, you can launch 4 automated browser personas in parallel to stress-test UX, edge cases, and accessibility:
+
+```powershell
+# Run the Gauntlet against an active sidecar run
+python scripts/run_gauntlet.py --run-id <run_id>
+```
+
+In this mode:
+1. 4 personas execute in parallel under a concurrency limit:
+   - **Impatient Mobile User**: Mobile viewport sizing and tap targets.
+   - **Messy-Input User**: Unicode strings, emojis, plus-addressed email formatting.
+   - **Double-Submit User**: Fast double-clicks and page refreshes.
+   - **Malformed-Input User**: Boundary testing (>350 char strings, invalid emails).
+2. Scribe publishes whiteboard cards for each persona with friction scores (1 to 5).
+3. A self-contained, responsive HTML audit report is compiled and served at:
+   `http://127.0.0.1:8000/runs/{run_id}/gauntlet/report`
+
+---
+
+## 7. Headless End-to-End Test Harnesses
+
+To verify full integration without opening the browser or Tauri UI:
+
+```powershell
+# Offline mock integration test (< 5 seconds)
+python scripts/e2e_mock.py
+
+# Live integration test with real TinyFish API & browser verification (< 15 seconds)
+python scripts/e2e_live.py
+```
+
+---
+
+## 8. Resetting State
 
 ```powershell
 # Reset WebSocket history and stop active runs
@@ -152,11 +187,13 @@ curl -X POST http://127.0.0.1:8000/mock/reset
 
 ---
 
-## 5. Environment Variables Reference
+## 9. Environment Variables Reference
 
 | Variable | Purpose | Default | Required? |
 |---|---|---|---|
 | `SWARM_MODE` | Swarm orchestration mode (`mock` or `live`) | `mock` | No |
+| `SWARM_DEMO_MODE` | Special demo mode (`seeded_bug` or `golden`) | `None` | No |
+| `SWARM_PACING` | Agent action pacing (`real`, `fast`, or `instant`) | `real` | No |
 | `SWARM_SIDECAR_PORT` | HTTP & WebSocket server port | `8000` | No |
 | `SWARM_LLM_MODE` | LLM gateway mode (`mock` or `live`) | `mock` | No |
 | `NVIDIA_NIM_API_KEY` | Primary LLM provider key | `None` | Yes (for real LLM) |

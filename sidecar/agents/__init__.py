@@ -4,6 +4,7 @@ from .queen import QueenAgent
 from .worker import WorkerAgent
 from .scribe import ScribeAgent
 from .run_manager import SwarmRunManager
+from .gauntlet import GauntletRunner, gauntlet_runner, DROPPED_PERSONAS
 
 __all__ = [
     "BaseAgent",
@@ -13,4 +14,7 @@ __all__ = [
     "WorkerAgent",
     "ScribeAgent",
     "SwarmRunManager",
+    "GauntletRunner",
+    "gauntlet_runner",
+    "DROPPED_PERSONAS",
 ]

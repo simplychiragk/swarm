@@ -293,18 +293,30 @@ class PolicyEngine:
                 reason = f"Non-allowlisted command: {' '.join(str(x) for x in argv[:3])}"
 
         elif tool == "tinyfish_browser_task":
-            # Browser task on a new domain is MEDIUM; on existing domain LOW
             url = args.get("url", "")
+            # Gauntlet safety rule: Persona testing must strictly target current run preview URL
+            if context.get("gauntlet") or agent == "gauntlet":
+                preview_needle = f"/runs/{run_id}/preview"
+                if preview_needle not in url:
+                    return Decision(
+                        outcome="deny",
+                        tier="FORBIDDEN",
+                        reason=f"Gauntlet violation: persona testing strictly restricted to run '{run_id}' workspace preview URL",
+                        decided_by="policy",
+                    )
+
+            # Browser task on run preview or verified domain is LOW; on new external domain is MEDIUM
             domain = url.split("//")[-1].split("/")[0].lower() if "//" in url else url.split("/")[0].lower()
-            if run_id not in self._seen_domains:
-                self._seen_domains[run_id] = set()
-            if domain and domain not in self._seen_domains[run_id]:
-                tier = "MEDIUM"
-                reason = f"TinyFish browser interaction with new domain '{domain}'"
-                self._seen_domains[run_id].add(domain)
-            else:
+            is_local = domain.startswith("127.0.0.1") or domain.startswith("localhost")
+            if context.get("gauntlet") or is_local or (run_id in self._seen_domains and domain in self._seen_domains[run_id]):
                 tier = "LOW"
                 reason = f"TinyFish browser interaction on verified domain '{domain}'"
+            else:
+                tier = "MEDIUM"
+                reason = f"TinyFish browser interaction with new domain '{domain}'"
+                if run_id not in self._seen_domains:
+                    self._seen_domains[run_id] = set()
+                self._seen_domains[run_id].add(domain)
 
         elif tool in ("file_read", "file_write", "tinyfish_search", "tinyfish_fetch", "feed_post", "card_post"):
             tier = "LOW"

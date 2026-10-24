@@ -483,6 +483,47 @@ async def get_run_artifact_endpoint(run_id: str, artifact_path: str):
     return FileResponse(path=file_path, media_type=ALLOWED_CONTENT_TYPES[ext])
 
 
+class GauntletRequest(BaseModel):
+    url: Optional[str] = None
+
+
+@app.post("/runs/{run_id}/gauntlet")
+async def trigger_gauntlet_endpoint(run_id: str, payload: Optional[GauntletRequest] = None):
+    """
+    Triggers the Gauntlet autonomous multi-persona browser suite for a run.
+    Evaluates 4 archetypes (Mobile, Messy Input, Double Submit, Malformed Input),
+    emits Honeycomb cards, clusters UX issues, and generates a rich HTML report artifact.
+    """
+    from sidecar.agents.gauntlet import gauntlet_runner
+
+    target_url = (payload.url if payload and payload.url else None) or f"http://127.0.0.1:8000/runs/{run_id}/preview/"
+
+    res = await gauntlet_runner.run_gauntlet(
+        target_url=target_url,
+        run_id=run_id,
+        bus=active_run_manager.bus if active_run_manager else None,
+    )
+    return res
+
+
+@app.get("/runs/{run_id}/gauntlet/report")
+async def get_gauntlet_report_endpoint(run_id: str):
+    """Returns the generated Gauntlet HTML audit report for the run."""
+    from fastapi.responses import HTMLResponse
+    from fastapi import HTTPException
+    from sidecar.permissions import resolve_safe_path, PathSafetyError
+
+    try:
+        report_file = resolve_safe_path(run_id, "artifacts/gauntlet_report.html", must_exist=True)
+        content = report_file.read_text(encoding="utf-8")
+        return HTMLResponse(content=content)
+    except (FileNotFoundError, PathSafetyError):
+        raise HTTPException(
+            status_code=404,
+            detail="Gauntlet report not found for this run. Run POST /runs/{id}/gauntlet first.",
+        )
+
+
 class SaveFilePayload(BaseModel):
     content: str
 
