@@ -6,7 +6,7 @@
 |---|---|---|
 | Stage 0 | Baseline audit (green suite, runbook verification, TODO scan, gap analysis) | done |
 | Stage 1 | Model connection that really works (live verification, streaming, /health/deps, smoke --all) | done |
-| Stage 2 | SQLite persistence (WAL mode, versioned migrations, runs/events/cards/approvals/artifacts, DB replay) | not started |
+| Stage 2 | SQLite persistence (WAL mode, versioned migrations, runs/events/cards/approvals/artifacts, DB replay) | done |
 | Stage 3 | Permission layer (deterministic policy, tiers, escalation, safe command/path, audit) | done |
 | Stage 4 | Real-time agent chat (channels, threads, intents, decision board, concurrent agent tasks) | not started |
 | Stage 5 | TinyFish for real (Search, Fetch, browser agent, ResearchBee grounding, smoke script) | not started |
@@ -55,6 +55,30 @@
 - **Comprehensive Smoke Test CLI**: Enhanced `python -m sidecar.llm.smoke` with `--all` flag to iterate through all configured providers (NVIDIA, OpenRouter, BYOK, Mock), measure latency, and print outputs.
 - **Rich Deterministic Mock Payloads**: Added mock handlers for Worker deliverables, Chat replies, QA evaluations, and Steering plan diffs to guarantee offline reliability across all swarm subsystems.
 - **Tests**: Added tests for streaming deltas and dependency health diagnostics, bringing total test count to 34/34 passing.
+
+---
+
+## Stage 2: SQLite Persistence & Replay
+
+### 1. What Was Built
+- **SQLite Engine (`data/swarm.db`)**: Configured SQLite with WAL mode (`PRAGMA journal_mode = WAL;`), foreign keys enabled (`PRAGMA foreign_keys = ON;`), normal synchronous mode (`PRAGMA synchronous = NORMAL;`), and busy timeout of 5000ms (`PRAGMA busy_timeout = 5000;`).
+- **Versioned Migrations**: Implemented custom migration manager in `sidecar/storage/migrations.py` using a `schema_migrations` table without external ORMs.
+  - Tables: `runs`, `events` (per-run seq, event_type, payload JSON, timestamp, provenance: 'real'|'simulated'|'replay'), `cards` (latest state projection), `approvals` (pending, resolved, decision, scope), `artifacts` (files written with hash and size), `llm_calls` (telemetry), `permission_events` (audit log), `decisions`, `steers`, `delivery_decisions`, `threads`.
+- **Single Write-Point Event Logger (`StorageService`)**: Implemented `record_event(run_id, event_type, payload, provenance)` in `sidecar/storage/service.py` with atomic per-run sequence numbers (`seq`). Projections to `cards` and `approvals` occur synchronously during write.
+- **Persistent Broadcaster Catch-Up**: Replaced the in-memory replay buffer in `sidecar/broadcaster.py` with DB queries. When clients connect:
+  - If `after_seq` is provided, stream events with `seq > after_seq`.
+  - If omitted, send latest cards projection and pending approvals first, then chronologically stream all run events.
+- **Replay REST Endpoint**: Added `POST /runs/{id}/replay` streaming historical events over WebSocket with provenance `"replay"` and adjustable pacing (`speed` or `delay_seconds`).
+- **Runs REST API**:
+  - `GET /runs`: List all runs.
+  - `GET /runs/{id}`: Get run status and goal.
+  - `GET /runs/{id}/events`: Get event log with sequence numbers.
+  - `GET /runs/{id}/cards`: Get current latest whiteboard cards.
+  - `GET /runs/{id}/approvals`: Get pending or all approvals.
+- **Provenance Tagging**: Every event stamped with provenance `"real"` (live), `"simulated"` (mock), or `"replay"` (replaying historical run).
+- **Unit Tests**: Created `sidecar/tests/storage/test_storage.py` (6 tests verifying migrations, sequential ordering, delta catch-up, latest card projection, approval lifecycle, and replay API). Total test suite now 40/40 passing.
+
+---
 
 
 

@@ -20,11 +20,8 @@ def get_db_path() -> Path:
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
 
-    # Default to repo_root/workspace/audit.db
-    from .path_safety import get_repo_root
-    default_p = (get_repo_root() / "workspace" / "audit.db").resolve()
-    default_p.parent.mkdir(parents=True, exist_ok=True)
-    return default_p
+    from sidecar.storage import get_default_db_path
+    return get_default_db_path()
 
 
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:

@@ -64,6 +64,11 @@ def now_iso() -> str:
 async def lifespan(app: FastAPI):
     mode = get_swarm_mode()
     logger.info(f"Swarm FastAPI sidecar starting up in SWARM_MODE={mode}...")
+    from sidecar.storage import get_db, run_migrations
+    db = get_db()
+    with db._lock:
+        run_migrations(db.connection)
+    logger.info("SQLite storage initialized and schema migrated successfully.")
     from sidecar.llm import validate_startup_config
     for msg in validate_startup_config():
         logger.info(f"[Startup Config] {msg}")
@@ -112,10 +117,22 @@ async def health_deps_endpoint():
 
 
 
-async def handle_inbound_envelope(envelope: InboundEnvelope) -> None:
-    """Route inbound client envelope based on SWARM_MODE."""
+async def handle_inbound_envelope(envelope: InboundEnvelope, run_id: str = "run-default") -> None:
+    """Route inbound client envelope based on SWARM_MODE and record to SQLite storage."""
     mode = get_swarm_mode()
-    logger.info(f"Handling client event '{envelope.event}' in mode '{mode}'")
+    logger.info(f"Handling client event '{envelope.event}' in mode '{mode}' for run '{run_id}'")
+
+    # Single write point for inbound client events
+    try:
+        from sidecar.storage import get_storage
+        get_storage().record_event(
+            run_id=run_id,
+            event_type=envelope.event,
+            payload=envelope.payload.model_dump(),
+            provenance="real",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record inbound event to storage: {e}")
 
     if mode == "mock":
         if envelope.event == "user_message":
@@ -132,7 +149,7 @@ async def handle_inbound_envelope(envelope: InboundEnvelope) -> None:
                     metadata={"in_reply_to": user_msg.id},
                 )
             ).model_dump()
-            await broadcaster.broadcast(queen_reply)
+            await broadcaster.broadcast(queen_reply, run_id=run_id, provenance="simulated")
 
         elif envelope.event == "approval_response":
             approval_resp: ApprovalResponse = envelope.payload
@@ -167,7 +184,7 @@ async def handle_inbound_envelope(envelope: InboundEnvelope) -> None:
                     updated_at=now_iso(),
                 )
             ).model_dump()
-            await broadcaster.broadcast(card_update)
+            await broadcaster.broadcast(card_update, run_id=run_id, provenance="simulated")
 
             # Broadcast Queen status
             status_update = FeedMessageEnvelope(
@@ -181,7 +198,7 @@ async def handle_inbound_envelope(envelope: InboundEnvelope) -> None:
                     metadata={"approval_id": approval_resp.approval_id, "decision": approval_resp.decision},
                 )
             ).model_dump()
-            await broadcaster.broadcast(status_update)
+            await broadcaster.broadcast(status_update, run_id=run_id, provenance="simulated")
 
     else:
         # Live mode delegates to RunManager
@@ -192,13 +209,18 @@ async def handle_inbound_envelope(envelope: InboundEnvelope) -> None:
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    run_id: str = "run-default",
+    after_seq: Optional[int] = None,
+):
     """
     Bidirectional WebSocket endpoint for connected frontend clients.
     Broadcasts agent feed messages, whiteboard card updates, and approval gates.
     Accepts, validates, and routes client user_message and approval_response events.
+    Supports catch-up via ?after_seq=<seq> or initial state push.
     """
-    await broadcaster.connect(websocket)
+    await broadcaster.connect(websocket, run_id=run_id, after_seq=after_seq)
 
     global mock_auto_started
     # In mock mode, auto-trigger the mock scenario ONCE on the very first client connection.
@@ -213,7 +235,7 @@ async def websocket_endpoint(websocket: WebSocket):
             raw_text = await websocket.receive_text()
             try:
                 envelope = parse_inbound_envelope(raw_text)
-                await handle_inbound_envelope(envelope)
+                await handle_inbound_envelope(envelope, run_id=run_id)
             except ValidationError as ve:
                 logger.warning(f"Invalid inbound event envelope rejected: {ve}")
                 err_msg = FeedMessageEnvelope(
@@ -291,6 +313,103 @@ async def whiteboard_filter_endpoint(req: WhiteboardFilterRequest):
     """Check if a message warrants a honeycomb whiteboard summary card."""
     show = decision_engine.should_show_on_whiteboard(req.message)
     return {"message_id": req.message.id, "show_on_whiteboard": show}
+
+
+@app.get("/runs")
+async def list_runs_endpoint(limit: int = 50):
+    """List runs in the SQLite store."""
+    from sidecar.storage import get_storage
+    return {"runs": get_storage().list_runs(limit=limit)}
+
+
+@app.get("/runs/{run_id}")
+async def get_run_endpoint(run_id: str):
+    """Get details for a specific run."""
+    from fastapi import HTTPException
+    from sidecar.storage import get_storage
+    run = get_storage().get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    return run
+
+
+@app.get("/runs/{run_id}/events")
+async def get_run_events_endpoint(run_id: str, after_seq: int = 0):
+    """Get events log for a run with sequential ordering."""
+    from sidecar.storage import get_storage
+    events = get_storage().get_run_events(run_id, after_seq=after_seq)
+    return {"run_id": run_id, "events": events, "count": len(events)}
+
+
+@app.get("/runs/{run_id}/cards")
+async def get_run_cards_endpoint(run_id: str):
+    """Get latest cards state projection for a run."""
+    from sidecar.storage import get_storage
+    cards = get_storage().get_run_cards(run_id)
+    return {"run_id": run_id, "cards": cards, "count": len(cards)}
+
+
+@app.get("/runs/{run_id}/approvals")
+async def get_run_approvals_endpoint(run_id: str, pending_only: bool = False):
+    """Get approvals for a run."""
+    from sidecar.storage import get_storage
+    storage = get_storage()
+    if pending_only:
+        items = storage.get_pending_approvals(run_id)
+    else:
+        items = storage.get_run_approvals(run_id)
+    return {"run_id": run_id, "approvals": items, "count": len(items)}
+
+
+class ReplayRequest(BaseModel):
+    speed: float = 1.0
+    delay_seconds: Optional[float] = None
+
+
+@app.post("/runs/{run_id}/replay")
+async def replay_run_endpoint(run_id: str, req: Optional[ReplayRequest] = None):
+    """
+    Streams all recorded events for this run over WebSocket with provenance: 'replay'.
+    """
+    import asyncio
+    from fastapi import HTTPException
+    from sidecar.storage import get_storage
+    events = get_storage().get_run_events(run_id, after_seq=0)
+    if not events:
+        raise HTTPException(status_code=404, detail=f"No events found for run '{run_id}'.")
+
+    speed = req.speed if req else 1.0
+    fixed_delay = req.delay_seconds if req else None
+
+    async def _replay_task():
+        prev_ts = None
+        for ev in events:
+            if fixed_delay is not None:
+                await asyncio.sleep(fixed_delay)
+            elif speed > 0 and prev_ts is not None:
+                try:
+                    t_curr = datetime.fromisoformat(ev["timestamp"])
+                    t_prev = datetime.fromisoformat(prev_ts)
+                    diff = (t_curr - t_prev).total_seconds()
+                    delay = max(0.01, min(diff / speed, 2.0))
+                    await asyncio.sleep(delay)
+                except Exception:
+                    await asyncio.sleep(0.05)
+            elif speed > 0:
+                await asyncio.sleep(0.05)
+
+            prev_ts = ev.get("timestamp")
+            envelope = {
+                "event": ev["event_type"],
+                "payload": ev["payload"],
+                "seq": ev["seq"],
+                "run_id": ev["run_id"],
+                "provenance": "replay",
+            }
+            await broadcaster.broadcast_direct(envelope)
+
+    asyncio.create_task(_replay_task())
+    return {"status": "replaying", "run_id": run_id, "event_count": len(events)}
 
 
 @app.get("/runs/{run_id}/permissions")

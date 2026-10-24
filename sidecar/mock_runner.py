@@ -361,7 +361,7 @@ class MockRunner:
                 if "payload" in step and "created_at" in step["payload"]:
                     step["payload"]["created_at"] = now_iso()
 
-                await broadcaster.broadcast(step)
+                await broadcaster.broadcast(step, run_id="run-default", provenance="simulated")
                 await asyncio.sleep(delay_seconds)
             logger.info("Mock scenario stream finished.")
         except asyncio.CancelledError:
