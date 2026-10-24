@@ -1609,6 +1609,401 @@ body {
 }
 
 /* -------------------------------------------------------------
+   BEEHIVE PROGRESS & HOVER CHECKLIST
+   ------------------------------------------------------------- */
+.beehive-mascot-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  position: relative;
+}
+
+.beehive-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mascot-hive {
+  transition: transform 0.2s ease, filter 0.3s ease;
+}
+
+.mascot-hive:hover {
+  transform: scale(1.03);
+}
+
+.hive-full-pulse {
+  animation: hive-glow 2.5s ease-in-out infinite alternate;
+}
+
+@keyframes hive-glow {
+  0% {
+    filter: drop-shadow(0 6px 18px rgba(229, 161, 45, 0.4));
+  }
+  100% {
+    filter: drop-shadow(0 8px 26px rgba(245, 178, 55, 0.7));
+  }
+}
+
+.bee-active {
+  filter: drop-shadow(0 2px 6px rgba(229, 161, 45, 0.4));
+}
+
+.honey-drip-dot {
+  animation: drip-pulse 2s ease-in-out infinite;
+}
+
+@keyframes drip-pulse {
+  0% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.9; }
+}
+
+.honey-bottom-drip {
+  animation: honey-slow-drip 3s ease-in-out infinite;
+}
+
+@keyframes honey-slow-drip {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(2px); }
+  100% { transform: translateY(0); }
+}
+
+/* Hive Progress Pill Badge */
+.hive-progress-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #F4E7D0;
+  border: 1.5px solid var(--color-border);
+  padding: 4px 12px;
+  border-radius: 999px;
+  box-shadow: 1.5px 1.5px 0px rgba(30, 27, 24, 0.25);
+  margin-top: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 11.5px;
+}
+
+.hive-progress-pill-badge:hover {
+  background-color: #EBD9BD;
+  transform: translateY(-1px);
+  box-shadow: 2px 2px 0px rgba(30, 27, 24, 0.35);
+}
+
+.badge-honey-icon {
+  font-size: 13px;
+}
+
+.badge-honey-pct {
+  font-weight: 800;
+  color: #7A4D05;
+}
+
+.badge-honey-sub {
+  font-size: 10.5px;
+  color: var(--color-text-subtle);
+  font-weight: 600;
+}
+
+/* Hover Checklist Popover */
+.beehive-checklist-popover {
+  position: absolute;
+  z-index: 150;
+  background-color: #FAF4E6;
+  border: 2px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: 4px 4px 0px rgba(30, 27, 24, 0.45);
+  width: 330px;
+  max-width: 90vw;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: checklist-popover-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+}
+
+@keyframes checklist-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.popover-lg {
+  bottom: calc(100% - 20px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.popover-sm {
+  top: calc(100% + 8px);
+  left: 0;
+}
+
+.popover-md {
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.checklist-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1.5px solid var(--color-border-subtle);
+  padding-bottom: 8px;
+}
+
+.popover-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.popover-honey-emoji {
+  font-size: 20px;
+}
+
+.popover-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #7A4D05;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.popover-subtitle {
+  font-size: 10.5px;
+  color: var(--color-text-subtle);
+  font-weight: 600;
+}
+
+.popover-pct-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  background-color: #FDE8C7;
+  border: 1.5px solid #C57E12;
+  border-radius: 8px;
+  padding: 2px 7px;
+  line-height: 1.1;
+}
+
+.pct-num {
+  font-size: 13px;
+  font-weight: 800;
+  color: #8C4A00;
+}
+
+.pct-label {
+  font-size: 8px;
+  font-weight: 800;
+  color: #A36209;
+  letter-spacing: 0.5px;
+}
+
+/* Progress Bar */
+.checklist-progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background-color: #EBDCBD;
+  border: 1.5px solid var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 1px 1px 2px rgba(30, 27, 24, 0.15);
+}
+
+.checklist-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #F5A623, #FFC44D);
+  border-radius: 999px;
+  transition: width 0.6s cubic-bezier(0.34, 1.25, 0.64, 1);
+}
+
+/* Sections */
+.checklist-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.checklist-section-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.what-left-title {
+  color: #9C5103;
+}
+
+.completed-title {
+  color: #1E6B37;
+}
+
+.checklist-all-done-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #E8F5E9;
+  border: 1.5px solid #4CAF50;
+  color: #1B5E20;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.checklist-items-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background-color: #F5EBD7;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  transition: all 0.12s ease;
+  cursor: pointer;
+}
+
+.checklist-item:hover {
+  background-color: #EEDEC3;
+  transform: translateY(-1px);
+}
+
+.checklist-item-status-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.empty-check-circle {
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid #8C7A65;
+  border-radius: 50%;
+  background-color: #F8F1E4;
+}
+
+.checklist-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.checklist-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.checklist-item-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-main);
+  line-height: 1.2;
+}
+
+.checklist-lane-badge {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.checklist-item-summary {
+  font-size: 9.5px;
+  color: var(--color-text-subtle);
+  line-height: 1.25;
+}
+
+.completed-item {
+  background-color: #EDF7EE;
+  border-color: #A5D6A7;
+  opacity: 0.85;
+}
+
+.done-strikethrough {
+  text-decoration: line-through;
+  color: #4E6852;
+}
+
+.checklist-popover-footer {
+  font-size: 9.5px;
+  color: var(--color-text-subtle);
+  border-top: 1.5px solid var(--color-border-subtle);
+  padding-top: 6px;
+  text-align: center;
+}
+
+/* Whiteboard Title Row and Honey Progress Pill */
+.whiteboard-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.honey-progress-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background-color: #FDE8C7;
+  border: 1.5px solid #C57E12;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  box-shadow: 1px 1px 0px rgba(30, 27, 24, 0.2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.honey-progress-pill:hover {
+  background-color: #FBD79E;
+  transform: translateY(-1px);
+  box-shadow: 2px 2px 0px rgba(30, 27, 24, 0.3);
+}
+
+.honey-drop-emoji {
+  font-size: 12px;
+}
+
+.honey-progress-pct {
+  font-weight: 800;
+  color: #8C4A00;
+}
+
+.honey-progress-sub {
+  font-size: 10px;
+  color: #7A5726;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------
    MODALS (APPROVAL, EVIDENCE, SETTINGS)
    ------------------------------------------------------------- */
 .modal-backdrop {

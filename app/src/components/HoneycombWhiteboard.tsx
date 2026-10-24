@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { WhiteboardCard, EvidenceItem, CardStatus } from "../types/contracts";
-import { BeehiveMascot } from "./BeehiveMascot";
+import { BeehiveMascot, getChecklistFromCards } from "./BeehiveMascot";
 import {
   Sparkles,
   CheckCircle,
@@ -36,6 +36,45 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
   onToggleSidebar,
 }) => {
   const [selectedLane, setSelectedLane] = useState<string>("all");
+
+  // Local state for manually toggled items if user checks them off in popover
+  const [manualChecklistOverrides, setManualChecklistOverrides] = useState<Record<string, "done" | "planned">>({});
+
+  // Reset manual overrides if board resets
+  useEffect(() => {
+    if (cards.length === 0) {
+      setManualChecklistOverrides({});
+    }
+  }, [cards.length]);
+
+  const { checklist: baseChecklist, progress: baseProgress, totalCount } =
+    getChecklistFromCards(cards);
+
+  // Apply manual overrides if any
+  const checklist = baseChecklist.map((item) => {
+    if (manualChecklistOverrides[item.id]) {
+      return { ...item, status: manualChecklistOverrides[item.id] };
+    }
+    return item;
+  });
+
+  const completedCount = checklist.filter((i) => i.status === "done").length;
+  const inProgressCount = checklist.filter(
+    (i) => i.status === "in_progress" || i.status === "needs_approval"
+  ).length;
+
+  const progress =
+    totalCount > 0
+      ? Math.min(100, Math.max(0, Math.round(((completedCount + inProgressCount * 0.4) / totalCount) * 100)))
+      : baseProgress;
+
+  const handleToggleChecklistItem = (id: string) => {
+    setManualChecklistOverrides((prev) => {
+      const currentStatus = checklist.find((i) => i.id === id)?.status;
+      const nextStatus = currentStatus === "done" ? "planned" : "done";
+      return { ...prev, [id]: nextStatus };
+    });
+  };
 
   const lanes: Array<{ id: string; label: string }> = [
     { id: "all", label: "All Lanes" },
@@ -144,9 +183,15 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
         </div>
 
         {cards.length === 0 ? (
-          /* Empty State - Exact Match to Uploaded Design */
+          /* Empty State - Exact Match to Uploaded Design with Honey Progress & Hover Checklist */
           <div className="empty-whiteboard-view">
-            <BeehiveMascot size="lg" showText />
+            <BeehiveMascot
+              size="lg"
+              showText
+              progress={progress}
+              checklist={checklist}
+              onToggleItem={handleToggleChecklistItem}
+            />
           </div>
         ) : (
           /* Populated State - Honeycomb Milestone Cards */
@@ -155,10 +200,22 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
             <div className="whiteboard-subbar">
               <div className="whiteboard-info-group">
                 <div className="whiteboard-mini-mascot">
-                  <BeehiveMascot size="sm" />
+                  <BeehiveMascot
+                    size="sm"
+                    progress={progress}
+                    checklist={checklist}
+                    onToggleItem={handleToggleChecklistItem}
+                  />
                 </div>
                 <div>
-                  <h2 className="whiteboard-heading">Honeycomb Whiteboard</h2>
+                  <div className="whiteboard-title-row">
+                    <h2 className="whiteboard-heading">Honeycomb Whiteboard</h2>
+                    <div className="honey-progress-pill" title="Hover beehive to view remaining checklist">
+                      <span className="honey-drop-emoji">🍯</span>
+                      <span className="honey-progress-pct">{progress}% Honey</span>
+                      <span className="honey-progress-sub">({completedCount}/{totalCount} Done)</span>
+                    </div>
+                  </div>
                   <p className="whiteboard-subheading">
                     Synthesized project milestones & live verification evidence
                   </p>
