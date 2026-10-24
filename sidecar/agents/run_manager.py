@@ -4,6 +4,7 @@ Orchestrates live agent farm runs, enforces global limits and timeouts, and coor
 """
 
 import os
+import uuid
 import asyncio
 import logging
 from typing import Optional, Dict, Any, List
@@ -17,6 +18,7 @@ from sidecar.models.contracts import (
     ApprovalRequest,
     UserMessage,
     ApprovalResponse,
+    EvidenceItem,
 )
 from sidecar.runtime.run_manager import RunManager
 from sidecar.decision import RuleBasedDecisionLayer
@@ -26,6 +28,19 @@ from .worker import WorkerAgent
 from .scribe import ScribeAgent
 
 logger = logging.getLogger("swarm.agents.run_manager")
+
+
+def get_pacing_delay(phase: str = "turn") -> float:
+    mode = os.environ.get("SWARM_PACING", "real").lower()
+    if mode == "instant":
+        return 0.0
+    elif mode == "fast":
+        return 0.05
+    if phase == "turn":
+        return 0.5
+    elif phase == "phase":
+        return 1.2
+    return 0.3
 
 
 class SwarmRunManager(RunManager):
@@ -93,6 +108,65 @@ class SwarmRunManager(RunManager):
         except asyncio.CancelledError:
             pass
 
+    async def emit_provenance_summary_card(self) -> None:
+        """
+        Emits a comprehensive summary card on the whiteboard listing
+        every tool call, its latency, and its provenance ('real' | 'simulated').
+        A judge can glance at the board and know what was live.
+        """
+        from sidecar.permissions import default_executor
+        tool_records = default_executor.get_tool_records(self.run_id)
+
+        evidence_items: List[EvidenceItem] = []
+        real_count = 0
+        sim_count = 0
+        total_latency = 0.0
+
+        for r in tool_records:
+            prov = r.get("provenance", "real")
+            lat = r.get("latency_ms", 0.0)
+            tool = r.get("tool", "unknown")
+            agent = r.get("agent", "")
+            outcome = r.get("outcome", "allow")
+            total_latency += lat
+            if prov == "real":
+                real_count += 1
+            else:
+                sim_count += 1
+
+            detail = f"{tool} ({lat}ms) [{prov.upper()}] - {outcome} by {agent}"
+            evidence_items.append(EvidenceItem(kind="provenance", url_or_text=detail))
+
+        if not evidence_items:
+            evidence_items.append(EvidenceItem(kind="provenance", url_or_text="Pipeline executed [SIMULATED]"))
+
+        summary_text = (
+            f"Run Audit: {len(tool_records)} tool calls ({real_count} real, {sim_count} simulated). "
+            f"Total tool latency: {round(total_latency, 1)}ms. Provenance: {'real' if real_count > 0 else 'simulated'}."
+        )
+
+        card = WhiteboardCard(
+            id="card-provenance-summary",
+            title="Run Provenance & Verification Audit",
+            summary=summary_text,
+            status=CardStatus.DONE,
+            lane=Lane.OPS,
+            evidence=evidence_items,
+            updated_at=FeedMessage(id="", timestamp="", sender=AgentSender.SYSTEM, content="").timestamp,
+        )
+        await self.bus.publish_card_upsert(card)
+        await self.bus.publish_feed_message(
+            FeedMessage(
+                id=f"msg-provenance-{uuid.uuid4().hex[:6]}",
+                timestamp=card.updated_at,
+                sender=AgentSender.SYSTEM,
+                lane=Lane.OPS,
+                type=MessageType.STATUS,
+                content=f"🛡️ Audit: {summary_text}",
+                metadata={"real_count": real_count, "simulated_count": sim_count, "provenance": "real" if real_count > 0 else "simulated"},
+            )
+        )
+
     async def _emit_failure_card(self, reason: str) -> None:
         """Emits a visible failure card when limits or timeouts trigger."""
         logger.error(f"Run failure: {reason}")
@@ -132,11 +206,11 @@ class SwarmRunManager(RunManager):
 
             # If enabled, Research Bee gathers live web specs prior to worker build
             if self.enable_tinyfish and self.research_bee:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(get_pacing_delay("turn"))
                 await self.research_bee.execute_research("best practice waitlist form fields 2026", run_id=self.run_id)
 
             # 2. Parallel construction: BE Worker and FE Worker execute tasks
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(get_pacing_delay("phase"))
             await self.be_worker.execute_task(
                 task_id="task-be-api",
                 title="FastAPI Waitlist Submission Endpoint",
@@ -144,7 +218,7 @@ class SwarmRunManager(RunManager):
                 run_id=self.run_id,
             )
 
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(get_pacing_delay("phase"))
             await self.fe_worker.execute_task(
                 task_id="task-fe-hero",
                 title="Responsive Waitlist Hero Section",
@@ -160,7 +234,7 @@ class SwarmRunManager(RunManager):
                 qa_pass = False
 
                 for attempt in range(1, max_retries + 2):
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(get_pacing_delay("turn"))
                     qa_res = await self.qa_bee.execute_browser_verification(
                         target_url=preview_url,
                         goal="Verify waitlist form submission and confirmation banner",
@@ -186,8 +260,11 @@ class SwarmRunManager(RunManager):
                     logger.warning("QA did not pass within retry budget.")
                     return
 
+            # Emit provenance summary card before approval gate
+            await self.emit_provenance_summary_card()
+
             # 4. Decision Layer checks if release requires human approval
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(get_pacing_delay("phase"))
             action_desc = "deploy waitlist landing page to production edge"
             needs_appr = self.decision_layer.needs_approval(action_desc)
 
@@ -280,6 +357,8 @@ class SwarmRunManager(RunManager):
             if response.decision == "approve"
             else f"Release redirected by user: {response.note or 'Revision requested.'}"
         )
+
+        await self.emit_provenance_summary_card()
 
         card = WhiteboardCard(
             id=response.card_id,

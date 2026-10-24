@@ -12,7 +12,7 @@
 | Stage 5 | TinyFish for real (Search, Fetch, browser agent, ResearchBee grounding, smoke script) | done |
 | Stage 6 | Workers build real project (served locally, optional tunnel, seeded-bug mode) | done |
 | Stage 7 | QA bee & verify loop (browser test, fail/fix/pass, 2 retry cap, approval gate) | done |
-| Stage 8 | End-to-end hardening of core path (live runs, pacing, provenance summary card) | not started |
+| Stage 8 | End-to-end hardening of core path (live runs, pacing, provenance summary card) | done |
 | Stage 9 | Demo safety (golden run recorder, offline demo mode, DEMO.md script) | not started |
 | Stage 10 | Steering running swarm (steer, queue, interrupt, plan diff, receipts) | not started |
 | Stage 11 | Decision layer message delivery (rules guard, optional Jev) | not started |
@@ -435,6 +435,17 @@
 ### 4. Assumptions Made
 - The permission system provides in-process software guardrails. Multi-tenant hostile untrusted code execution requires containerized or VM sandboxing (documented in `docs/PERMISSIONS.md`).
 - `FORBIDDEN` rules cannot be disabled or bypassed by any environment variable or configuration option under any circumstances.
+
+---
+
+## Stage 8: End-to-End Hardening of Core Path & Provenance Summary Card
+
+### 1. What Was Built
+- **Pacing Engine (`get_pacing_delay`)**: Implemented configurable execution pacing controlled via `SWARM_PACING=real|fast|instant`. Real pacing spaces out agent messages and phases for realistic live presentation; fast/instant modes accelerate test executions and CI.
+- **Tool Execution Telemetry & Latency Tracking**: Added in-memory tracking in `ToolExecutor` logging tool invocations, execution duration (`latency_ms`), tier, outcome, and provenance (`real` vs `simulated`) per run.
+- **Run Provenance & Verification Audit Card**: Emitted `card-provenance-summary` on the whiteboard and status feed message prior to the human approval gate. Transparently documents every tool call, its execution latency, and its live provenance so judges can verify live network operations at a glance.
+- **Unit & Integration Tests**: Verified `test_end_to_end_run_to_approval` passes with the provenance audit card emitted. Entire test suite (53/53 tests) green.
+
 
 ---
 

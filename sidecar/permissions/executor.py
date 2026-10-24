@@ -6,6 +6,7 @@ timed out, or denied. All outputs and audit logs are redacted.
 """
 
 import os
+import time
 import uuid
 import asyncio
 from datetime import datetime, timezone
@@ -125,6 +126,37 @@ class ToolExecutor:
 
     def __init__(self, policy_engine: Optional[PolicyEngine] = None):
         self.policy_engine = policy_engine or PolicyEngine()
+        self._tool_records: Dict[str, List[Dict[str, Any]]] = {}
+
+    def get_tool_records(self, run_id: str) -> List[Dict[str, Any]]:
+        """Returns the in-memory log of all tool executions for a given run."""
+        return list(self._tool_records.get(run_id, []))
+
+    def _record_tool_run(
+        self,
+        run_id: str,
+        agent: str,
+        tool: str,
+        args_summary: str,
+        tier: str,
+        outcome: str,
+        latency_ms: float,
+        provenance: str,
+        error: Optional[str] = None,
+    ) -> None:
+        if run_id not in self._tool_records:
+            self._tool_records[run_id] = []
+        self._tool_records[run_id].append({
+            "tool": tool,
+            "agent": agent,
+            "args_summary": args_summary,
+            "tier": tier,
+            "outcome": outcome,
+            "latency_ms": latency_ms,
+            "provenance": provenance,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error": error,
+        })
 
     async def execute(
         self,
@@ -138,6 +170,7 @@ class ToolExecutor:
         """
         Executes a tool with strict permission evaluation and approval gating.
         """
+        start_time = time.perf_counter()
         context = context or {}
         # 1. Deterministic Policy Check
         decision: Decision = self.policy_engine.check(
@@ -162,6 +195,8 @@ class ToolExecutor:
                 decided_by=decision.decided_by,
                 reason=decision.reason,
             )
+            lat_ms = round((time.perf_counter() - start_time) * 1000, 1)
+            self._record_tool_run(run_id, agent, tool, args_summary, decision.tier, "deny", lat_ms, "real", error=decision.reason)
 
             if bus:
                 await self._emit_deny_events(bus, agent, tool, decision)
@@ -233,6 +268,8 @@ class ToolExecutor:
                     decided_by="timeout",
                     reason=timeout_reason,
                 )
+                lat_ms = round((time.perf_counter() - start_time) * 1000, 1)
+                self._record_tool_run(run_id, agent, tool, args_summary, decision.tier, "deny", lat_ms, "real", error=timeout_reason)
 
                 if bus:
                     await self._emit_timeout_events(bus, agent, tool, card_id, timeout_reason)
@@ -261,6 +298,8 @@ class ToolExecutor:
                     decided_by="user",
                     reason=user_denial,
                 )
+                lat_ms = round((time.perf_counter() - start_time) * 1000, 1)
+                self._record_tool_run(run_id, agent, tool, args_summary, decision.tier, "deny", lat_ms, "real", error=user_denial)
 
                 if bus:
                     await self._emit_user_deny_events(bus, agent, tool, card_id, user_denial)
@@ -316,6 +355,17 @@ class ToolExecutor:
         try:
             raw_result = await self._dispatch_tool(run_id, tool, args)
             clean_result = redact_data(raw_result)
+            lat_ms = round((time.perf_counter() - start_time) * 1000, 1)
+
+            provenance = "real"
+            if isinstance(clean_result, dict) and "provenance" in clean_result:
+                provenance = clean_result["provenance"]
+            elif tool.startswith("tinyfish_"):
+                from ..tools.client import TinyFishClient
+                provenance = "real" if TinyFishClient().is_live_configured() else "simulated"
+
+            self._record_tool_run(run_id, agent, tool, args_summary, decision.tier, "allow", lat_ms, provenance)
+
             return ToolResult(
                 success=True,
                 data=clean_result,
@@ -325,6 +375,8 @@ class ToolExecutor:
             )
         except Exception as exc:
             err_msg = redact(f"Tool '{tool}' execution failed: {exc}")
+            lat_ms = round((time.perf_counter() - start_time) * 1000, 1)
+            self._record_tool_run(run_id, agent, tool, args_summary, decision.tier, "failed", lat_ms, "real", error=err_msg)
             return ToolResult(
                 success=False,
                 error=err_msg,

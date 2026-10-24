@@ -190,4 +190,9 @@ async def test_end_to_end_run_to_approval():
     assert final_card.status == CardStatus.DONE
     assert final_card.id == "card-release-gate"
 
+    # Verify provenance summary card was also emitted
+    prov_cards = [c for c in published_cards if c.id == "card-provenance-summary"]
+    assert len(prov_cards) >= 1
+    assert "Audit" in prov_cards[0].summary
+
     await manager.stop()

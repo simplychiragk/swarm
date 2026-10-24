@@ -38,6 +38,7 @@ desktop.ini
 
 # Run workspaces and SQLite databases
 workspace/
-data/
+data/*
+!data/golden_run.json
 *.sqlite
 *.db
