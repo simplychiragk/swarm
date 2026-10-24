@@ -5,6 +5,7 @@ import { HoneycombWhiteboard } from "./components/HoneycombWhiteboard";
 import { ApprovalModal } from "./components/ApprovalModal";
 import { EvidenceModal } from "./components/EvidenceModal";
 import { SettingsModal } from "./components/SettingsModal";
+import { FileViewerModal, type ProjectFile } from "./components/FileViewerModal";
 import type { EvidenceItem, WhiteboardCard } from "./types/contracts";
 import "./App.css";
 
@@ -29,6 +30,7 @@ export function App() {
   } | null>(null);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [viewingFile, setViewingFile] = useState<ProjectFile | null>(null);
 
   // Keyboard shortcut Ctrl+B or Cmd+B to toggle sidebar
   useEffect(() => {
@@ -66,6 +68,7 @@ export function App() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           isSidebarOpen={isSidebarOpen}
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+          onOpenFile={(file) => setViewingFile(file)}
         />
 
         {/* Right Whiteboard Canvas (Retro Honeycomb Board with Beehive Mascot & Cards) */}
@@ -95,6 +98,12 @@ export function App() {
         evidence={selectedEvidence ? selectedEvidence.item : null}
         cardTitle={selectedEvidence?.cardTitle}
         onClose={() => setSelectedEvidence(null)}
+      />
+
+      {/* Interactive Project File Code Preview Modal */}
+      <FileViewerModal
+        file={viewingFile}
+        onClose={() => setViewingFile(null)}
       />
 
       {/* System Settings & Runtime Config */}
