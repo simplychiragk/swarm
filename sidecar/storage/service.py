@@ -373,6 +373,52 @@ class StorageService:
         )
         return [dict(r) for r in cur.fetchall()]
 
+    # --- Steering Receipts ---
+    def record_steer(
+        self,
+        steer_id: str,
+        run_id: str,
+        message_id: str,
+        mode: str,
+        prompt: str,
+        status: str = "applied",
+        plan_diff: Optional[Dict[str, Any]] = None,
+        targets: Optional[List[str]] = None,
+    ) -> str:
+        self.ensure_run(run_id)
+        diff_json = json.dumps(plan_diff) if plan_diff else None
+        targets_json = json.dumps(targets or [])
+        self.db.execute_write(
+            """
+            INSERT INTO steers (id, run_id, message_id, mode, status, prompt, plan_diff_json, targets_json, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                status = excluded.status,
+                plan_diff_json = excluded.plan_diff_json;
+            """,
+            (steer_id, run_id, message_id, mode, status, prompt, diff_json, targets_json, now_iso()),
+        )
+        return steer_id
+
+    def get_run_steers(self, run_id: str) -> List[Dict[str, Any]]:
+        cur = self.db.execute_read(
+            "SELECT * FROM steers WHERE run_id = ? ORDER BY timestamp ASC;",
+            (run_id,),
+        )
+        results = []
+        for r in cur.fetchall():
+            d = dict(r)
+            try:
+                d["plan_diff"] = json.loads(d["plan_diff_json"]) if d["plan_diff_json"] else None
+            except Exception:
+                d["plan_diff"] = None
+            try:
+                d["targets"] = json.loads(d["targets_json"]) if d["targets_json"] else []
+            except Exception:
+                d["targets"] = []
+            results.append(d)
+        return results
+
 
 _storage_instance: Optional[StorageService] = None
 

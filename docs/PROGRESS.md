@@ -14,7 +14,7 @@
 | Stage 7 | QA bee & verify loop (browser test, fail/fix/pass, 2 retry cap, approval gate) | done |
 | Stage 8 | End-to-end hardening of core path (live runs, pacing, provenance summary card) | done |
 | Stage 9 | Demo safety (golden run recorder, offline demo mode, DEMO.md script) | done |
-| Stage 10 | Steering running swarm (steer, queue, interrupt, plan diff, receipts) | not started |
+| Stage 10 | Steering running swarm (steer, queue, interrupt, plan diff, receipts) | done |
 | Stage 11 | Decision layer message delivery (rules guard, optional Jev) | not started |
 | Stage 12 | End-to-end harness & UI handoff (scripts/e2e_mock.py, e2e_live.py, UI_HANDOFF.md) | not started |
 | Stage 13 | The Gauntlet (persona testing, HTML report) [COULD] | not started |
@@ -468,5 +468,18 @@
 - **Deterministic Offline Replay Mode (`SWARM_DEMO_MODE=golden`)**: Updated `MockRunner` in `sidecar/mock_runner.py` and WebSocket connection logic in `sidecar/main.py`. When enabled, the sidecar streams directly from `data/golden_run.json` with realistic or instant pacing. Zero LLM calls and zero external network calls are made.
 - **Presenter Guide & Pitch Script (`docs/DEMO.md`)**: Authored comprehensive 2-minute stage presenter script with word-for-word pitch, input actions, specific screen cues ("Notice the scribe just turned 14 agent messages into three cards", "Watch the QA bee run the real browser"), and bulletproof backup plans for Wi-Fi drops, API 500s, and provider outages.
 - **Unit Tests**: Implemented `sidecar/tests/test_golden_replay.py` validating file structure, absence of secrets, and streaming playback with `provenance: 'replay'`. Total test suite now 55/55 passing.
+
+---
+
+## Stage 10: Steering the Running Swarm
+
+### 1. What Was Built
+- **Message Input Modes (`UserMessage.mode`)**: Extended the user message contract with `mode: 'steer' | 'queue' | 'interrupt'` (defaulting to `'steer'`). Preserved full backwards compatibility across Python, Shared Types, and Tauri App contract mirrors.
+- **Structured Plan Diff Generation & WebSocket Broadcast (`PlanDiff`, `TaskDiffItem`, `PlanDiffEnvelope`)**: Queen dynamically computes structured diffs (`added`, `modified`, `removed` tasks) upon user steering, broadcasts `plan_diff` events, and emits `[EDITED]` Whiteboard cards.
+- **Worker Dynamic Code Adaptation**: FE Worker updates `index.html` and `app.js` with steered inputs (e.g., international phone number with country code picker), while BE Worker updates `api/main.py` Pydantic models.
+- **SQLite Steering Receipts**: Implemented `record_steer` and `get_run_steers` in `StorageService` saving steer receipts (`id, run_id, message_id, mode, status, prompt, plan_diff_json, targets_json, timestamp`). Added `GET /runs/{run_id}/steers` endpoint to `sidecar/main.py`.
+- **Documentation**: Authored `docs/STEERING.md` detailing steering modes, diff schemas, and UI synchronization.
+- **Tests**: Implemented `sidecar/tests/agents/test_steering.py` testing `queue`, `interrupt`, and mid-run phone field additions. All 57 tests green.
+
 
 

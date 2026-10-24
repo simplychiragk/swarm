@@ -51,6 +51,7 @@ class WorkerAgent(BaseAgent):
         self.active_task_id: Optional[str] = None
         self.seeded_bug_active = (os.environ.get("SWARM_DEMO_MODE", "").lower() == "seeded_bug")
         self.bug_fixed = False
+        self.has_phone_field = False
 
     async def write_deliverable_artifact(self, filename: str, content: str, run_id: str = "run-default") -> None:
         """
@@ -71,9 +72,23 @@ class WorkerAgent(BaseAgent):
         else:
             logger.info(f"Worker '{self.name}' persisted deliverable '{clean_name}' ({len(content)} bytes)")
 
-    async def _write_frontend_project(self, run_id: str = "run-default", with_bug: bool = False) -> None:
+    async def _write_frontend_project(self, run_id: str = "run-default", with_bug: bool = False, with_phone: bool = False) -> None:
         """Writes real working HTML, CSS, and JS landing page into workspace/<run_id>/."""
         disabled_attr = "disabled" if with_bug else ""
+        include_phone = with_phone or self.has_phone_field
+
+        phone_html = """
+          <div class="form-group phone-group">
+            <label for="phone">Phone Number</label>
+            <div style="display: flex; gap: 8px;">
+              <select id="country-code" name="country_code" style="width: 110px;">
+                <option value="+1">+1 (US)</option>
+                <option value="+91" selected>+91 (IN)</option>
+                <option value="+44">+44 (UK)</option>
+              </select>
+              <input type="tel" id="phone" name="phone" placeholder="9876543210" required style="flex: 1;" />
+            </div>
+          </div>""" if include_phone else ""
 
         index_html = f"""<!doctype html>
 <html lang="en">
@@ -102,7 +117,7 @@ class WorkerAgent(BaseAgent):
           <div class="form-group">
             <label for="email">Work Email</label>
             <input type="email" id="email" name="email" placeholder="alex@company.com" required />
-          </div>
+          </div>{phone_html}
           <div class="form-group">
             <label for="role">Primary Role</label>
             <select id="role" name="role">
@@ -247,6 +262,10 @@ footer {
     const name = document.getElementById('name').value;
     const email = document.getElementById('email').value;
     const role = document.getElementById('role').value;
+    const phoneEl = document.getElementById('phone');
+    const countryEl = document.getElementById('country-code');
+    const phone = phoneEl ? phoneEl.value : null;
+    const countryCode = countryEl ? countryEl.value : null;
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
@@ -258,10 +277,16 @@ footer {
       : '/api/waitlist';
 
     try {
+      const payload = { name, email, role };
+      if (phone) {
+        payload.phone = phone;
+        payload.country_code = countryCode;
+      }
+
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, role })
+        body: JSON.stringify(payload)
       });
 
       if (res.status === 201 || res.ok) {
@@ -289,7 +314,8 @@ footer {
 
     async def _write_backend_project(self, run_id: str = "run-default") -> None:
         """Writes real working FastAPI backend route into workspace/<run_id>/."""
-        api_py = """from fastapi import FastAPI, HTTPException
+        api_py = """from typing import Optional
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, EmailStr
 
 app = FastAPI(title="Waitlist API")
@@ -298,6 +324,8 @@ class WaitlistRequest(BaseModel):
     name: str
     email: EmailStr
     role: str
+    phone: Optional[str] = None
+    country_code: Optional[str] = None
 
 @app.post("/api/waitlist", status_code=201)
 def submit_waitlist(req: WaitlistRequest):
@@ -309,9 +337,48 @@ def submit_waitlist(req: WaitlistRequest):
         "name": req.name,
         "email": req.email,
         "role": req.role,
+        "phone": req.phone,
+        "country_code": req.country_code,
     }
 """
         await self.write_deliverable_artifact("api/main.py", api_py, run_id=run_id)
+
+    async def apply_steer(self, steer_spec: Dict[str, Any], run_id: str = "run-default") -> None:
+        """Applies human steering adjustments to workspace code and updates cards."""
+        if steer_spec.get("field") == "phone":
+            self.has_phone_field = True
+            logger.info(f"Worker '{self.name}' incorporating phone field into workspace '{run_id}'")
+
+            if self.lane == Lane.FE:
+                await self._write_frontend_project(run_id=run_id, with_bug=False, with_phone=True)
+                await self.emit_card_upsert(
+                    card_id="task-fe-hero",
+                    title="[EDITED] Responsive Waitlist Hero Section",
+                    summary="Updated UI with phone number field and country code selector.",
+                    status=CardStatus.DONE,
+                    lane=Lane.FE,
+                )
+                await self.emit_feed_message(
+                    msg_type=MessageType.CHAT,
+                    content="FE Worker: Added phone input and country code picker to waitlist form in index.html and app.js.",
+                    channel="build",
+                    intent="handoff",
+                )
+            elif self.lane == Lane.BE:
+                await self._write_backend_project(run_id=run_id)
+                await self.emit_card_upsert(
+                    card_id="task-be-api",
+                    title="[EDITED] FastAPI Waitlist Submission Endpoint",
+                    summary="Updated schema and route to validate and accept phone & country code.",
+                    status=CardStatus.DONE,
+                    lane=Lane.BE,
+                )
+                await self.emit_feed_message(
+                    msg_type=MessageType.CHAT,
+                    content="BE Worker: Updated WaitlistRequest in api/main.py to accept optional phone and country_code.",
+                    channel="build",
+                    intent="handoff",
+                )
 
     async def apply_fix(self, run_id: str = "run-default") -> None:
         """Applies fix to workspace files after a QA failure."""

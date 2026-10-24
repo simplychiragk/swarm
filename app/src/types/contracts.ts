@@ -80,6 +80,22 @@ export interface UserMessage {
   id: string;
   text: string;
   timestamp: string; // ISO 8601
+  mode?: 'steer' | 'queue' | 'interrupt';
+}
+
+export interface TaskDiffItem {
+  task_id: string;
+  title: string;
+  action: 'added' | 'modified' | 'removed';
+  lane: Lane;
+  reason: string;
+}
+
+export interface PlanDiff {
+  run_id: string;
+  reason: string;
+  changes: TaskDiffItem[];
+  timestamp: string;
 }
 
 export interface ApprovalResponse {
@@ -97,7 +113,8 @@ export type WebSocketEventType =
   | 'user_message'
   | 'approval_response'
   | 'agent_status'
-  | 'feed_chunk';
+  | 'feed_chunk'
+  | 'plan_diff';
 
 export type EventEnvelope =
   | {
@@ -127,4 +144,8 @@ export type EventEnvelope =
   | {
       event: 'feed_chunk';
       payload: FeedChunk;
+    }
+  | {
+      event: 'plan_diff';
+      payload: PlanDiff;
     };

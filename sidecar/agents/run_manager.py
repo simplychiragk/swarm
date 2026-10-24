@@ -330,18 +330,52 @@ class SwarmRunManager(RunManager):
             await self._emit_failure_card(f"Global run timeout ({self.global_timeout_seconds}s) exceeded.")
 
     async def handle_user_message(self, message: UserMessage) -> None:
-        """Handles incoming user messages during live execution."""
-        logger.info(f"SwarmRunManager received user message: '{message.text}'")
+        """Handles incoming user messages during live execution or mid-run steering."""
+        logger.info(f"SwarmRunManager received user message: '{message.text}' (mode={message.mode})")
         if not self.is_running:
             await self.start_run(message.text)
         else:
-            if self.queen:
+            if not self.queen:
+                return
+
+            if not self.queen.plan_done:
                 await self.queen.handle_user_input(message.text)
                 # If plan was produced from this follow-up message, run the remainder of pipeline
                 if self.queen.plan_done and not self.approval_pending:
                     self._orchestrator_task = asyncio.create_task(
                         self._orchestration_pipeline(message.text)
                     )
+            else:
+                # Mid-run steering phase
+                await self.steer_run(message)
+
+    async def steer_run(self, message: UserMessage) -> None:
+        """Processes real-time steering, queueing, or interrupt of active swarm."""
+        mode = message.mode or "steer"
+        steer_id = f"steer-{uuid.uuid4().hex[:6]}"
+        diff = await self.queen.steer(message, run_id=self.run_id)
+
+        targets = ["fe_worker", "be_worker"]
+        if mode == "steer":
+            if "phone" in message.text.lower():
+                if self.fe_worker:
+                    await self.fe_worker.apply_steer({"field": "phone"}, run_id=self.run_id)
+                if self.be_worker:
+                    await self.be_worker.apply_steer({"field": "phone"}, run_id=self.run_id)
+
+        # Record steering receipt in SQLite
+        from sidecar.storage import get_storage
+        status = "applied" if mode == "steer" else ("paused" if mode == "interrupt" else "queued")
+        get_storage().record_steer(
+            steer_id=steer_id,
+            run_id=self.run_id,
+            message_id=message.id,
+            mode=mode,
+            prompt=message.text,
+            status=status,
+            plan_diff=diff.model_dump() if diff else None,
+            targets=targets,
+        )
 
     async def handle_approval(self, response: ApprovalResponse) -> None:
         """Handles user sign-off decision (approve or redirect)."""

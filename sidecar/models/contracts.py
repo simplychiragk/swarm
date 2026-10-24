@@ -113,6 +113,27 @@ class UserMessage(BaseModel):
     id: str
     text: str
     timestamp: str = Field(..., description="ISO 8601 string")
+    mode: Optional[Literal["steer", "queue", "interrupt"]] = "steer"
+
+
+class TaskDiffItem(BaseModel):
+    task_id: str
+    title: str
+    action: Literal["added", "modified", "removed"]
+    lane: Lane
+    reason: str
+
+
+class PlanDiff(BaseModel):
+    run_id: str
+    reason: str
+    changes: List[TaskDiffItem]
+    timestamp: str
+
+
+class PlanDiffEnvelope(BaseModel):
+    event: Literal["plan_diff"] = "plan_diff"
+    payload: PlanDiff
 
 
 class ApprovalResponse(BaseModel):
@@ -167,6 +188,7 @@ EventEnvelope = Annotated[
         ApprovalResponseEnvelope,
         AgentStatusEnvelope,
         FeedChunkEnvelope,
+        PlanDiffEnvelope,
     ],
     Field(discriminator="event"),
 ]

@@ -362,6 +362,15 @@ async def get_run_approvals_endpoint(run_id: str, pending_only: bool = False):
     return {"run_id": run_id, "approvals": items, "count": len(items)}
 
 
+@app.get("/runs/{run_id}/steers")
+async def get_run_steers_endpoint(run_id: str):
+    """Get steering receipts and plan diffs for a run."""
+    from sidecar.storage import get_storage
+    storage = get_storage()
+    items = storage.get_run_steers(run_id)
+    return {"run_id": run_id, "steers": items, "count": len(items)}
+
+
 class ReplayRequest(BaseModel):
     speed: float = 1.0
     delay_seconds: Optional[float] = None

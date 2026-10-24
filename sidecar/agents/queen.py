@@ -5,7 +5,9 @@ via LLM gateway, and delegates to workers with health monitoring.
 """
 
 import time
+import uuid
 import logging
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
@@ -16,9 +18,13 @@ from sidecar.models.contracts import (
     CardStatus,
     FeedMessage,
     UserMessage,
+    PlanDiff,
+    TaskDiffItem,
+    PlanDiffEnvelope,
 )
 from sidecar.llm import complete
 from sidecar.decision import RuleBasedDecisionLayer
+from sidecar.broadcaster import broadcaster
 from .base import BaseAgent
 from .bus import MessageBus
 
@@ -64,6 +70,8 @@ class QueenAgent(BaseAgent):
         self.tasks_created: List[TaskItem] = []
         self.worker_activity: Dict[str, float] = {}
         self.worker_messages: Dict[str, List[str]] = {}
+        self.pending_steers: List[UserMessage] = []
+        self.is_interrupted: bool = False
 
     def record_worker_activity(self, worker_name: str, message_content: str):
         """Update activity timestamp and message history for watchdog."""
@@ -229,6 +237,121 @@ class QueenAgent(BaseAgent):
             requires_response=True,
         )
         return responsible_worker
+
+    async def steer(self, message: UserMessage, run_id: str = "run-default") -> PlanDiff:
+        """
+        Processes human steering, queueing, or interrupt commands mid-run.
+        Computes structured plan diff and updates workers and whiteboard.
+        """
+        mode = message.mode or "steer"
+        logger.info(f"Queen received steering command [{mode}]: '{message.text}'")
+
+        if mode == "interrupt":
+            self.is_interrupted = True
+            await self.emit_feed_message(
+                msg_type=MessageType.STATUS,
+                content=f"Queen: ⚠️ EXECUTION INTERRUPTED by user. Pausing active workers: '{message.text}'",
+                lane=Lane.OPS,
+            )
+            await self.emit_card_upsert(
+                card_id="card-interrupt",
+                title="Swarm Interrupted by User",
+                summary=f"Workers paused pending user clarification: '{message.text}'",
+                status=CardStatus.IN_PROGRESS,
+                lane=Lane.OPS,
+            )
+            return PlanDiff(
+                run_id=run_id,
+                reason=f"Execution paused on user interrupt: {message.text}",
+                changes=[],
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
+
+        elif mode == "queue":
+            self.pending_steers.append(message)
+            await self.emit_feed_message(
+                msg_type=MessageType.STATUS,
+                content=f"Queen: Instructions queued. Will factor after current build phase completes: '{message.text}'",
+                lane=Lane.OPS,
+            )
+            return PlanDiff(
+                run_id=run_id,
+                reason=f"Queued for next phase: {message.text}",
+                changes=[],
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
+
+        # mode == "steer": actively compute plan diff and modify plan
+        now_ts = datetime.now(timezone.utc).isoformat()
+        reason = f"User steering: {message.text}"
+        changes: List[TaskDiffItem] = []
+
+        lower_text = message.text.lower()
+        if "phone" in lower_text:
+            changes = [
+                TaskDiffItem(
+                    task_id="task-fe-phone",
+                    title="Add Phone Number & Country Code Selector",
+                    action="added",
+                    lane=Lane.FE,
+                    reason="Capture verified international phone number with country code picker",
+                ),
+                TaskDiffItem(
+                    task_id="task-be-phone",
+                    title="Extend Waitlist Schema for Phone Validation",
+                    action="added",
+                    lane=Lane.BE,
+                    reason="Accept and validate optional phone & country_code in POST /api/waitlist",
+                ),
+                TaskDiffItem(
+                    task_id="task-qa-verify",
+                    title="Verify Form Submission with Phone Field",
+                    action="modified",
+                    lane=Lane.TEST,
+                    reason="Verify submission succeeds with name, email, role, and phone number",
+                ),
+            ]
+        else:
+            changes = [
+                TaskDiffItem(
+                    task_id=f"task-steer-{uuid.uuid4().hex[:4]}",
+                    title=f"Adjust Requirements: {message.text[:40]}",
+                    action="modified",
+                    lane=Lane.FE,
+                    reason=message.text,
+                )
+            ]
+
+        diff = PlanDiff(
+            run_id=run_id,
+            reason=reason,
+            changes=changes,
+            timestamp=now_ts,
+        )
+
+        # Broadcast plan_diff event
+        envelope = PlanDiffEnvelope(payload=diff)
+        await broadcaster.broadcast(envelope.model_dump(), run_id=run_id, provenance="real")
+
+        # Emit feed announcement
+        await self.emit_feed_message(
+            msg_type=MessageType.TASK,
+            content=f"Queen: Plan diff computed ({len(changes)} changes). User steered: '{message.text}'. Updating worker lanes.",
+            channel="plan",
+            intent="proposal",
+            mentions=["fe_worker", "be_worker", "qa_bee"],
+        )
+
+        # Emit [EDITED] Whiteboard Card for the plan
+        await self.emit_card_upsert(
+            card_id="card-steer-plan",
+            title="[EDITED] Steered Execution Plan",
+            summary=f"Plan diff applied: {reason} ({len(changes)} task modifications).",
+            status=CardStatus.IN_PROGRESS,
+            lane=Lane.NONE,
+        )
+
+        return diff
 
     async def process_message(self, message: FeedMessage) -> None:
         """Monitor feed messages to update worker health timestamps."""
