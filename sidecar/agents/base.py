@@ -53,6 +53,7 @@ class BaseAgent(ABC):
         self.max_messages = max_messages
         self.message_count = 0
         self.inbox: asyncio.Queue[FeedMessage] = asyncio.Queue()
+        self.bus.register_agent(self.name, queue=self.inbox)
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -62,6 +63,13 @@ class BaseAgent(ABC):
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
         lane: Optional[Lane] = None,
+        channel: Optional[str] = "hive",
+        to: Optional[str] = None,
+        thread_id: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        mentions: Optional[List[str]] = None,
+        intent: Optional[str] = "chat",
+        requires_response: Optional[bool] = False,
     ) -> FeedMessage:
         """Constructs, records, and publishes a FeedMessage across the message bus."""
         if self.message_count >= self.max_messages:
@@ -78,9 +86,42 @@ class BaseAgent(ABC):
             type=msg_type,
             content=content,
             metadata=metadata or {},
+            channel=channel,
+            to=to,
+            thread_id=thread_id,
+            reply_to=reply_to,
+            mentions=mentions,
+            intent=intent,  # type: ignore
+            requires_response=requires_response,
         )
         await self.bus.publish_feed_message(msg)
         return msg
+
+    async def emit_status(
+        self,
+        status: str,
+        current_task: Optional[str] = None,
+    ) -> None:
+        """Broadcasts live status for this agent (idle, thinking, working, blocked)."""
+        await self.bus.publish_agent_status(
+            agent=self.name,
+            status=status,
+            current_task=current_task,
+            lane=self.lane,
+        )
+
+    async def emit_chunk(
+        self,
+        message_id: str,
+        delta: str,
+        is_final: bool = False,
+    ) -> None:
+        """Broadcasts a token chunk delta for a long message."""
+        await self.bus.publish_feed_chunk(
+            message_id=message_id,
+            delta=delta,
+            is_final=is_final,
+        )
 
     async def emit_card_upsert(
         self,

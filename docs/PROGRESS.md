@@ -8,7 +8,7 @@
 | Stage 1 | Model connection that really works (live verification, streaming, /health/deps, smoke --all) | done |
 | Stage 2 | SQLite persistence (WAL mode, versioned migrations, runs/events/cards/approvals/artifacts, DB replay) | done |
 | Stage 3 | Permission layer (deterministic policy, tiers, escalation, safe command/path, audit) | done |
-| Stage 4 | Real-time agent chat (channels, threads, intents, decision board, concurrent agent tasks) | not started |
+| Stage 4 | Real-time agent chat (channels, threads, intents, decision board, concurrent agent tasks) | done |
 | Stage 5 | TinyFish for real (Search, Fetch, browser agent, ResearchBee grounding, smoke script) | not started |
 | Stage 6 | Workers build real project (served locally, optional tunnel, seeded-bug mode) | not started |
 | Stage 7 | QA bee & verify loop (browser test, fail/fix/pass, 2 retry cap, approval gate) | not started |
@@ -77,6 +77,32 @@
   - `GET /runs/{id}/approvals`: Get pending or all approvals.
 - **Provenance Tagging**: Every event stamped with provenance `"real"` (live), `"simulated"` (mock), or `"replay"` (replaying historical run).
 - **Unit Tests**: Created `sidecar/tests/storage/test_storage.py` (6 tests verifying migrations, sequential ordering, delta catch-up, latest card projection, approval lifecycle, and replay API). Total test suite now 40/40 passing.
+
+---
+
+## Stage 4: Real-Time Agent Chat That Feels Alive
+
+### 1. What Was Built
+- **Concurrent Agent Tasks & Inboxes**: Configured agents to operate as concurrent `asyncio` tasks with isolated FIFO queues (`asyncio.Queue`) registered directly on the `MessageBus` (`sidecar/agents/bus.py`).
+- **Channel Partitioning (`hive`, `plan`, `build`, `qa`)**:
+  - `hive`: Swarm-wide high-level updates, goal announcements, status reports, approval gates.
+  - `plan`: Architecture and planning room (Queen, Scribe, FE Worker, BE Worker).
+  - `build`: High-frequency technical code, API schemas, and component interfaces (FE Worker, BE Worker, Scribe).
+  - `qa`: Verification room, browser testing results, bug logs, and fix verification (QA Bee, FE Worker, BE Worker, Scribe).
+- **Direct Messaging & Mentions**: Supported explicit peer targeting via `to="agent_name"` and `@mentions` parsing, automatically delivering to target agent inboxes without spamming unrelated agents.
+- **Thread Lifecycle & Auto-Summarization**:
+  - Turn counting per `thread_id`.
+  - Threshold-based auto-summarization (default: 8 turns).
+  - Auto-generated thread summary posted by Scribe to the channel and recorded in the SQLite `threads` table.
+- **Decisions Board**:
+  - Messages with `intent="decision"` are automatically extracted and recorded into the `decisions` table.
+  - Scribe immediately creates and broadcasts a Honeycomb Whiteboard Card (`card_upsert`) with `status="done"`, documenting the agreed contract and stakeholders.
+- **Presence & Streaming Tokens**:
+  - `agent_status` event (`idle`, `thinking`, `working`, `blocked`) for real-time typing/working indicators in the UI.
+  - `feed_chunk` event for streaming delta tokens of long agent thoughts or code generations.
+- **Contract Type Mirror**: Updated `sidecar/models/contracts.py`, `shared/types/contracts.ts`, and mirrored to `app/src/types/contracts.ts`.
+- **Documentation**: Authored `docs/CHAT.md` detailing channel routing, intent semantics, and thread lifecycle.
+- **Unit Tests**: Added `sidecar/tests/agents/test_chat.py` (6 tests covering channel isolation, direct messaging, threading, turn tracking, auto-summarization, decision board, and presence/chunk events). Suite now 46/46 passing.
 
 ---
 

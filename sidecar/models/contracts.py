@@ -57,6 +57,29 @@ class FeedMessage(BaseModel):
     type: MessageType = MessageType.CHAT
     content: str
     metadata: Optional[Dict[str, Any]] = None
+    channel: Optional[str] = "hive"
+    to: Optional[str] = None
+    thread_id: Optional[str] = None
+    reply_to: Optional[str] = None
+    mentions: Optional[List[str]] = None
+    intent: Optional[Literal["chat", "proposal", "critique", "decision", "handoff", "blocked"]] = "chat"
+    requires_response: Optional[bool] = False
+
+
+class AgentStatus(BaseModel):
+    agent: str
+    status: Literal["idle", "thinking", "working", "blocked"]
+    current_task: Optional[str] = None
+    lane: Optional[Lane] = Lane.NONE
+    timestamp: str = Field(..., description="ISO 8601 string")
+
+
+class FeedChunk(BaseModel):
+    message_id: str
+    delta: str
+    turn: Optional[int] = 0
+    is_final: Optional[bool] = False
+    timestamp: str = Field(..., description="ISO 8601 string")
 
 
 class WhiteboardCard(BaseModel):
@@ -125,6 +148,16 @@ class ApprovalResponseEnvelope(BaseModel):
     payload: ApprovalResponse
 
 
+class AgentStatusEnvelope(BaseModel):
+    event: Literal["agent_status"] = "agent_status"
+    payload: AgentStatus
+
+
+class FeedChunkEnvelope(BaseModel):
+    event: Literal["feed_chunk"] = "feed_chunk"
+    payload: FeedChunk
+
+
 EventEnvelope = Annotated[
     Union[
         FeedMessageEnvelope,
@@ -132,6 +165,8 @@ EventEnvelope = Annotated[
         ApprovalRequestEnvelope,
         UserMessageEnvelope,
         ApprovalResponseEnvelope,
+        AgentStatusEnvelope,
+        FeedChunkEnvelope,
     ],
     Field(discriminator="event"),
 ]

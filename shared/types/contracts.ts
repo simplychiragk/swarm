@@ -24,6 +24,29 @@ export interface FeedMessage {
   type: MessageType;
   content: string;
   metadata?: Record<string, unknown>;
+  channel?: string;
+  to?: string;
+  thread_id?: string;
+  reply_to?: string;
+  mentions?: string[];
+  intent?: 'chat' | 'proposal' | 'critique' | 'decision' | 'handoff' | 'blocked';
+  requires_response?: boolean;
+}
+
+export interface AgentStatus {
+  agent: string;
+  status: 'idle' | 'thinking' | 'working' | 'blocked';
+  current_task?: string;
+  lane?: Lane;
+  timestamp: string; // ISO 8601
+}
+
+export interface FeedChunk {
+  message_id: string;
+  delta: string;
+  turn?: number;
+  is_final?: boolean;
+  timestamp: string; // ISO 8601
 }
 
 export interface WhiteboardCard {
@@ -72,7 +95,9 @@ export type WebSocketEventType =
   | 'card_upsert'
   | 'approval_request'
   | 'user_message'
-  | 'approval_response';
+  | 'approval_response'
+  | 'agent_status'
+  | 'feed_chunk';
 
 export type EventEnvelope =
   | {
@@ -94,4 +119,12 @@ export type EventEnvelope =
   | {
       event: 'approval_response';
       payload: ApprovalResponse;
+    }
+  | {
+      event: 'agent_status';
+      payload: AgentStatus;
+    }
+  | {
+      event: 'feed_chunk';
+      payload: FeedChunk;
     };
