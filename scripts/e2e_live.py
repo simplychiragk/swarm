@@ -96,7 +96,7 @@ async def run_e2e_live() -> None:
         received_events: List[Dict[str, Any]] = []
         approval_seen = False
         approval_sent = False
-        interview_replied = False
+        interview_replies = 0
 
         ws_url = f"ws://127.0.0.1:{port}/ws?run_id={run_id}"
         async with websockets.connect(ws_url, ping_interval=None, ping_timeout=None) as ws:
@@ -124,21 +124,26 @@ async def run_e2e_live() -> None:
                     payload = evt.get("payload", {})
 
                     # If Queen asks clarifying question, reply immediately to progress interview
-                    if event_type == "feed_message" and payload.get("sender") == "queen" and not interview_replied:
+                    if event_type == "feed_message" and payload.get("sender") == "queen" and interview_replies < 3:
                         content = payload.get("content", "")
                         if "?" in content:
-                            print(f"[LIVE E2E] Queen inquired: '{content}'. Replying with specs...")
+                            interview_replies += 1
+                            reply_text = (
+                                "Audience is developers, dark modern honeycomb aesthetic, capture name, email, role"
+                                if interview_replies == 1
+                                else "Standard confirmation modal and validation, proceed to development!"
+                            )
+                            print(f"[LIVE E2E] Queen inquired ({interview_replies}/3): '{content}'. Replying with specs...")
                             reply_msg = {
                                 "event": "user_message",
                                 "payload": {
-                                    "id": "usr-live-2",
-                                    "text": "Audience is developers, dark modern honeycomb aesthetic, capture name, email, role",
+                                    "id": f"usr-live-{interview_replies+1}",
+                                    "text": reply_text,
                                     "timestamp": datetime.now(timezone.utc).isoformat(),
                                     "mode": "steer",
                                 },
                             }
                             await ws.send(json.dumps(reply_msg))
-                            interview_replied = True
 
                     # Handle Approval Gate
                     if event_type == "approval_request" and not approval_sent:

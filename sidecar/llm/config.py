@@ -41,6 +41,15 @@ class ProviderConfig:
 # Priority-ordered provider fallback chain
 PROVIDER_CHAIN: List[ProviderConfig] = [
     ProviderConfig(
+        name="pollinations",
+        base_url=os.environ.get("POLLINATIONS_BASE_URL", "https://gen.pollinations.ai/v1"),
+        api_key_env="POLLINATIONS_API_KEY",
+        models_by_tier={
+            "fast": os.environ.get("POLLINATIONS_MODEL_FAST", "openai/gpt-5.4-nano"),
+            "smart": os.environ.get("POLLINATIONS_MODEL_SMART", "openai/gpt-5.4-nano"),
+        },
+    ),
+    ProviderConfig(
         name="nvidia",
         base_url=os.environ.get("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1"),
         api_key_env="NVIDIA_NIM_API_KEY",
@@ -54,8 +63,8 @@ PROVIDER_CHAIN: List[ProviderConfig] = [
         base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         api_key_env="OPENROUTER_API_KEY",
         models_by_tier={
-            "fast": os.environ.get("OPENROUTER_MODEL_FAST", "xingchen-agi/xing4.0-29b-a4b"),
-            "smart": os.environ.get("OPENROUTER_MODEL_SMART", "xingchen-agi/xing4.0-29b-a4b"),
+            "fast": os.environ.get("OPENROUTER_MODEL_FAST", "openai/gpt-5.4-nano"),
+            "smart": os.environ.get("OPENROUTER_MODEL_SMART", "openai/gpt-5.4-nano"),
         },
         extra_headers={
             "HTTP-Referer": "https://github.com/simplychiragk/swarm",
@@ -95,7 +104,7 @@ def validate_startup_config() -> List[str]:
         if not available:
             warnings.append(
                 "SWARM_LLM_MODE is set to 'live' but no LLM provider API keys were detected "
-                "(NVIDIA_NIM_API_KEY, OPENROUTER_API_KEY, or BYOK_API_KEY). "
+                "(POLLINATIONS_API_KEY, NVIDIA_NIM_API_KEY, OPENROUTER_API_KEY, or BYOK_API_KEY). "
                 "The gateway will fall back to offline deterministic mock mode."
             )
         else:

@@ -95,15 +95,20 @@ async def _call_provider_http(
     }
     headers.update(provider.extra_headers)
 
+    max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "2048"))
     if provider.name == "openrouter":
+        candidate_models = [model, "openai/gpt-5.4-nano", "nvidia/nemotron-3.5-lightning:free", "google/gemma-4-26b-a4b-it:free"]
+        unique_models = list(dict.fromkeys([m for m in candidate_models if m]))
         payload: Dict[str, Any] = {
-            "models": [model, "nvidia/nemotron-3.5-lightning:free", "google/gemma-4-26b-a4b-it:free"],
+            "models": unique_models,
             "messages": messages,
+            "max_tokens": max_tokens,
         }
     else:
         payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
+            "max_tokens": max_tokens,
         }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -158,17 +163,22 @@ async def _stream_deltas(
                 "Content-Type": "application/json",
             }
             headers.update(provider.extra_headers)
+            max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "2048"))
             if provider.name == "openrouter":
+                candidate_models = [model, "openai/gpt-5.4-nano", "nvidia/nemotron-3.5-lightning:free", "google/gemma-4-26b-a4b-it:free"]
+                unique_models = list(dict.fromkeys([m for m in candidate_models if m]))
                 payload: Dict[str, Any] = {
-                    "models": [model, "nvidia/nemotron-3.5-lightning:free", "google/gemma-4-26b-a4b-it:free"],
+                    "models": unique_models,
                     "messages": messages,
                     "stream": True,
+                    "max_tokens": max_tokens,
                 }
             else:
                 payload: Dict[str, Any] = {
                     "model": model,
                     "messages": messages,
                     "stream": True,
+                    "max_tokens": max_tokens,
                 }
             try:
                 async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
