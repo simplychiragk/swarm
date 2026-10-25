@@ -35,6 +35,7 @@ logger = logging.getLogger("swarm.agents.queen")
 class InterviewEvaluation(BaseModel):
     is_finished: bool = Field(..., description="Whether sufficient requirements are gathered")
     question: str = Field(..., description="Follow-up question if not finished")
+    options: List[str] = Field(default_factory=list, description="3-4 distinct multiple-choice options for the user to answer directly")
     summary: str = Field(..., description="Summary of confirmed specifications")
 
 
@@ -104,6 +105,28 @@ class QueenAgent(BaseAgent):
                 )
                 self.worker_activity[worker_name] = now  # Reset nudge timer
 
+    def _get_contextual_options(self, step: int, question: str) -> List[str]:
+        """Provides default high-quality multiple choice options if LLM didn't return an options list."""
+        q_lower = question.lower()
+        if "audience" in q_lower or step == 1:
+            return [
+                "College Students & Campus Builders",
+                "Early-stage Founders & Tech Leaders",
+                "Developers, Hackers & Open Source Community",
+            ]
+        elif "theme" in q_lower or "design" in q_lower or "aesthetic" in q_lower or step == 2:
+            return [
+                "Dark Honeycomb & Cyberpunk Amber",
+                "Clean Minimalist Modern Light",
+                "High-Contrast Glassmorphism & Neon",
+            ]
+        else:
+            return [
+                "RSVP Registration Form + Countdown Timer",
+                "Event Agenda, Speakers Grid & Live Map",
+                "Waitlist Sign-up with Community Social Links",
+            ]
+
     async def handle_user_input(self, user_text: str) -> None:
         """Processes user input during discovery interview or steering."""
         self.dialogue_history.append({"role": "user", "content": user_text})
@@ -120,7 +143,15 @@ class QueenAgent(BaseAgent):
             else:
                 eval_res = await complete(
                     messages=[
-                        {"role": "system", "content": f"{self.role_prompt}\nEvaluate if we have enough details (audience, theme, fields). Max 3 questions."},
+                        {
+                            "role": "system",
+                            "content": (
+                                f"{self.role_prompt}\n"
+                                "Evaluate if we have enough details (audience, theme, fields). Max 3 questions. "
+                                "When asking a question, ALWAYS provide 3 to 4 distinct, concise multiple-choice options "
+                                "in the 'options' field so the user can choose directly or type their own."
+                            ),
+                        },
                         *self.dialogue_history,
                     ],
                     tier="fast",
@@ -130,10 +161,16 @@ class QueenAgent(BaseAgent):
                 if parsed and parsed.is_finished:
                     self.interview_done = True
                 elif parsed and parsed.question:
+                    options = (
+                        parsed.options
+                        if (parsed and parsed.options and len(parsed.options) >= 2)
+                        else self._get_contextual_options(self.question_count, parsed.question)
+                    )
                     self.dialogue_history.append({"role": "assistant", "content": parsed.question})
                     await self.emit_feed_message(
                         msg_type=MessageType.CHAT,
                         content=f"Queen: {parsed.question}",
+                        metadata={"options": options},
                     )
                     await self.emit_card_upsert(
                         card_id="card-discovery",

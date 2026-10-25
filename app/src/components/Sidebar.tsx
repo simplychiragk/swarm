@@ -775,6 +775,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         )}
                       </div>
                       <p className="feed-bubble-content">{m.content}</p>
+
+                      {/* Interactive MCQ Choice Chips if Queen provided options */}
+                      {Array.isArray(m.metadata?.options) && (m.metadata.options as string[]).length > 0 && (
+                        <div className="mcq-options-container" role="group" aria-label="Multiple choice options">
+                          <span className="mcq-prompt-hint">Click a choice or type below:</span>
+                          <div className="mcq-options-grid">
+                            {(m.metadata.options as string[]).map((opt, oIdx) => {
+                              const letter = String.fromCharCode(65 + oIdx);
+                              return (
+                                <button
+                                  key={oIdx}
+                                  type="button"
+                                  className="mcq-option-chip"
+                                  onClick={() => onSendMessage(opt)}
+                                  title={`Choose: ${opt}`}
+                                >
+                                  <span className="mcq-letter-badge">{letter}</span>
+                                  <span className="mcq-option-text">{opt}</span>
+                                </button>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              className="mcq-option-chip mcq-custom-chip"
+                              onClick={() => {
+                                const inputEl = document.querySelector<HTMLInputElement>(".retro-feed-input");
+                                if (inputEl) {
+                                  inputEl.focus();
+                                  inputEl.placeholder = "Type your own custom answer...";
+                                }
+                              }}
+                              title="Type your own custom answer"
+                            >
+                              <span className="mcq-letter-badge">✏️</span>
+                              <span className="mcq-option-text">Type your own answer...</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <span className="feed-bubble-time">
                         {new Date(m.timestamp).toLocaleTimeString([], {
                           hour: "2-digit",
