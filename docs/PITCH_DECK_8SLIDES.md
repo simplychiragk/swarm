@@ -157,14 +157,14 @@ Feature diagram showcasing Swarm's new local coding harness capabilities:
        └── Self-Correcting Test Loop (pytest / npm test auto-healing up to 3x)
 ```
 
-### Key Engineering Primitives (The 20% Gap Solved)
+### Key Engineering Primitives (Native Local Codebase Harness)
 - **Attach to Any Repo**: Set `SWARM_PROJECT_ROOT` or `--project-dir` to point Swarm directly at any existing project on your laptop.
 - **Targeted Line Diffs (`file_edit`)**: Replaces whole-file overwriting with exact block search-and-replace using atomic temporary file swaps.
 - **Codebase Exploration**: Workers search functions with `search_code` (regex) and inspect lines with windowed `file_read` before patching.
 - **Self-Correcting Test Loop**: Automatically runs `pytest` or `npm test` after edits; reads tracebacks and iterates on fixes up to 3 cycles.
 
 ### Speaker Notes
-> "Swarm is not just a toy that generates isolated demo folders. We completed the 20% gap to turn Swarm into a full local coding agent harness like Cursor or Claude Code. You can point Swarm at any existing repository on your machine. Workers explore your codebase, read existing functions, make targeted line-level search-and-replace diffs without destroying your existing files, and execute your local test suite to heal their own bugs."
+> "Swarm is not just a toy that generates isolated demo folders. It is a full local coding agent harness. You can point Swarm at any existing repository on your machine. Workers explore your codebase, read existing functions, make targeted line-level search-and-replace diffs without destroying your existing files, and execute your local test suite to heal their own bugs."
 
 ---
 

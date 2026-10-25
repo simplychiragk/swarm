@@ -238,11 +238,13 @@ npm --prefix app run build
 
 ## 📚 Project Documentation
 
-- **[Master Handover & Architecture Spec](docs/SWARM_HANDOVER_AND_GAP_SPEC.md)**: Exhaustive technical blueprint, past failure post-mortems, and gap specifications.
+- **[System Architecture](docs/ARCHITECTURE.md)**: Exhaustive technical blueprint, 5-layer design, and data flow from user interaction to whiteboard card updates.
 - **[WebSocket Contracts](docs/CONTRACT.md)**: Precise JSON event envelope specs for client/server streaming.
 - **[Permissions & Safety Policy](docs/PERMISSIONS.md)**: Security policy, sandbox boundaries, and tool tier classifications.
 - **[Runbook & Operational Guide](docs/RUNBOOK.md)**: Troubleshooting, streaming flags, and environment configurations.
 - **[Development Progress Log](docs/PROGRESS.md)**: Chronological stage-by-stage engineering log.
+- **[3-Minute Demo Video Script](docs/VIDEO_SCRIPT_3MIN.md)**: Second-by-second presenter script and screen recording cues.
+- **[Pitch Deck Specification](docs/PITCH_DECK_8SLIDES.md)**: 8-slide architecture and technical breakdown.
 
 ---
 

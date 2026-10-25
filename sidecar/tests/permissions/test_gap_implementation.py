@@ -1,11 +1,11 @@
 """
-Tests for the 20% Gap implementation (SWARM_HANDOVER_AND_GAP_SPEC.md):
+Tests for the Native Local Codebase Harness implementation:
 
-Gap 1: SWARM_PROJECT_ROOT dynamic run workspace (escape the sandbox)
-Gap 2: file_edit targeted search-and-replace with safe ambiguity failure
-Gap 3: list_directory, search_code, and windowed file_read exploration tools
-Gap 4: worker self-check loop helpers (test command resolution + escalation path)
-Gap 5: GET /runs/{run_id}/git-diff (read-only) and POST /runs/{run_id}/git-revert
+Feature 1: SWARM_PROJECT_ROOT dynamic run workspace (escape the sandbox)
+Feature 2: file_edit targeted search-and-replace with safe ambiguity failure
+Feature 3: list_directory, search_code, and windowed file_read exploration tools
+Feature 4: worker self-check loop helpers (test command resolution + escalation path)
+Feature 5: GET /runs/{run_id}/git-diff (read-only) and POST /runs/{run_id}/git-revert
 """
 
 import os
