@@ -36,6 +36,32 @@ export interface StarterGoal {
   prompt: string;
 }
 
+interface DetectedDirectories {
+  current: string;
+  is_external: boolean;
+  desktop_path: string | null;
+  desktop_folders: Array<{ name: string; path: string }>;
+  project_folders: Array<{ name: string; path: string }>;
+}
+
+function guessFrontendLanguage(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  if (ext === "ts" || ext === "tsx") return "typescript";
+  if (ext === "js" || ext === "jsx" || ext === "mjs" || ext === "cjs") return "javascript";
+  if (ext === "json") return "json";
+  if (ext === "html" || ext === "htm") return "html";
+  if (ext === "css" || ext === "scss" || ext === "sass" || ext === "less") return "css";
+  if (ext === "md" || ext === "markdown") return "markdown";
+  if (ext === "py" || ext === "pyw") return "python";
+  if (ext === "rs") return "rust";
+  if (ext === "toml") return "toml";
+  if (ext === "yaml" || ext === "yml") return "yaml";
+  if (ext === "sql") return "sql";
+  if (ext === "sh" || ext === "bash" || ext === "zsh") return "shell";
+  if (ext === "svg") return "svg";
+  return "text";
+}
+
 export const STARTER_GOALS: StarterGoal[] = [
   {
     icon: "🐝",
@@ -158,6 +184,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [showOpenDirModal, setShowOpenDirModal] = useState(false);
   const [targetDirPath, setTargetDirPath] = useState("");
   const [isSwitchingDir, setIsSwitchingDir] = useState(false);
+  const [detectedDirs, setDetectedDirs] = useState<DetectedDirectories | null>(null);
+
+  // Load detected host directories whenever Open Directory modal opens
+  useEffect(() => {
+    if (showOpenDirModal) {
+      fetch("http://127.0.0.1:8000/workspace/directories")
+        .then((r) => r.json())
+        .then((data: DetectedDirectories) => setDetectedDirs(data))
+        .catch(() => {});
+    }
+  }, [showOpenDirModal]);
 
   // Desktop folder opening & popover state
   const [showFolderMenu, setShowFolderMenu] = useState(false);
@@ -224,7 +261,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Real-time workspace tree fetch from sidecar
   const fetchWorkspaceTree = async () => {
-    // If user is currently browsing an offline custom folder, don't wipe it out
+    // If user is currently browsing an offline local folder override, don't wipe it out
     if (isLocalFolderOverride) return;
 
     try {
@@ -237,7 +274,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           const folderName = normalized.split("/").pop() || "workspace";
           setWorkspaceName(folderName);
         }
-        if (data.files && Array.isArray(data.files) && data.files.length > 0) {
+        if (data.files && Array.isArray(data.files)) {
           const newMap: Record<string, ProjectFile> = {};
           for (const f of data.files) {
             newMap[f.path] = {
@@ -301,10 +338,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         setIsLocalFolderOverride(false);
         setOpenedFolderName(null);
 
+        let folderName = "workspace";
         if (data.workspace) {
           setWorkspacePath(data.workspace);
           const normalized = data.workspace.replace(/\\/g, "/").replace(/\/$/, "");
-          const folderName = normalized.split("/").pop() || "workspace";
+          folderName = normalized.split("/").pop() || "workspace";
           setWorkspaceName(folderName);
         }
 
@@ -320,12 +358,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }
         }
         setFilesMap(newMap);
+        setExpandedFolders({ __root__: true });
         setShowOpenDirModal(false);
         setTargetDirPath("");
         setActiveTab("files");
 
+        if (data.files && data.files.length > 0) {
+          setSelectedFilePath(data.files[0].path);
+          onOpenFile(data.files[0]);
+        } else {
+          setSelectedFilePath("");
+        }
+
         if (dirToOpen.trim()) {
-          showToast(`Opened directory "${workspaceName}" (${data.count} files)`);
+          showToast(`Opened directory "${folderName}" (${data.count ?? Object.keys(newMap).length} files)`);
         } else {
           showToast("Reset to default sandbox workspace");
         }
@@ -341,9 +387,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  // Open existing folder on Desktop using native browser directory picker or fallback
+  // Open native folder dialog on host machine, or fall back to browser folder picker
   const handleBrowseDesktopFolder = async () => {
     setShowFolderMenu(false);
+    setShowOpenDirModal(false);
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/workspace/browse", {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.cancelled) {
+          return;
+        }
+        if (data.workspace) {
+          setIsLocalFolderOverride(false);
+          setOpenedFolderName(null);
+          setWorkspacePath(data.workspace);
+          const normalized = data.workspace.replace(/\\/g, "/").replace(/\/$/, "");
+          const folderName = normalized.split("/").pop() || "workspace";
+          setWorkspaceName(folderName);
+
+          const newMap: Record<string, ProjectFile> = {};
+          if (data.files && Array.isArray(data.files)) {
+            for (const f of data.files) {
+              newMap[f.path] = {
+                name: f.name,
+                path: f.path,
+                language: f.language,
+                content: f.content,
+              };
+            }
+          }
+          setFilesMap(newMap);
+          setExpandedFolders({ __root__: true });
+          setActiveTab("files");
+
+          if (data.files && data.files.length > 0) {
+            setSelectedFilePath(data.files[0].path);
+            onOpenFile(data.files[0]);
+          } else {
+            setSelectedFilePath("");
+          }
+
+          showToast(`Opened folder "${folderName}" (${data.count ?? Object.keys(newMap).length} files)`);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Native browse endpoint unavailable, trying browser directory picker:", err);
+    }
 
     if ("showDirectoryPicker" in window) {
       try {
@@ -359,14 +453,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const readEntries = async (handle: any, currentPath: string) => {
-          if (count >= 300) return;
+          if (count >= 500) return;
           for await (const entry of handle.values()) {
-            if (count >= 300) break;
+            if (count >= 500) break;
             const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
             if (entry.kind === "file") {
               if (
                 entry.name.startsWith(".") ||
-                /\.(png|jpg|jpeg|ico|gif|exe|dll|zip|tar|gz|woff|woff2)$/i.test(entry.name)
+                /\.(png|jpg|jpeg|ico|gif|exe|dll|zip|tar|gz|woff|woff2|bin|pdf)$/i.test(entry.name)
               ) {
                 continue;
               }
@@ -374,17 +468,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 const file = await entry.getFile();
                 if (file.size <= 500 * 1024) {
                   const text = await file.text();
-                  const ext = entry.name.split(".").pop()?.toLowerCase() || "";
-                  let lang = "text";
-                  if (ext === "ts" || ext === "tsx") lang = "typescript";
-                  else if (ext === "js" || ext === "jsx") lang = "javascript";
-                  else if (ext === "json") lang = "json";
-                  else if (ext === "html") lang = "html";
-                  else if (ext === "css") lang = "css";
-                  else if (ext === "md") lang = "markdown";
-                  else if (ext === "py") lang = "python";
-                  else if (ext === "rs") lang = "rust";
-                  else if (ext === "toml") lang = "toml";
+                  const lang = guessFrontendLanguage(entry.name);
 
                   newFiles[entryPath] = {
                     name: entry.name,
@@ -403,6 +487,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 entry.name !== ".git" &&
                 entry.name !== "dist" &&
                 entry.name !== "build" &&
+                entry.name !== ".next" &&
                 !entry.name.startsWith(".")
               ) {
                 await readEntries(entry, entryPath);
@@ -413,14 +498,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         await readEntries(dirHandle, "");
 
-        if (count > 0) {
-          setIsLocalFolderOverride(true);
-          setFilesMap(newFiles);
-          setOpenedFolderName(rootName);
-          setActiveTab("files");
-          showToast(`Opened folder "${rootName}" (${count} files)`);
-          return;
+        setIsLocalFolderOverride(true);
+        setFilesMap(newFiles);
+        setOpenedFolderName(rootName);
+        setExpandedFolders({ __root__: true });
+        setActiveTab("files");
+
+        const firstKey = Object.keys(newFiles)[0];
+        if (firstKey) {
+          setSelectedFilePath(firstKey);
+          onOpenFile(newFiles[firstKey]);
+        } else {
+          setSelectedFilePath("");
         }
+
+        showToast(`Opened folder "${rootName}" (${count} files)`);
+        return;
       } catch (err: unknown) {
         if ((err as Error)?.name === "AbortError") {
           return;
@@ -450,27 +543,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     let count = 0;
-    for (let i = 0; i < fileList.length && count < 300; i++) {
+    for (let i = 0; i < fileList.length && count < 500; i++) {
       const file = fileList[i];
       if (file.size > 500 * 1024) continue;
       if (file.webkitRelativePath.includes("/.git/")) continue;
       if (file.webkitRelativePath.includes("/node_modules/")) continue;
       if (file.webkitRelativePath.includes("/dist/")) continue;
-      if (/\.(png|jpg|jpeg|gif|ico|webp|exe|dll|zip|tar|gz|woff|woff2)$/i.test(file.name)) continue;
+      if (/\.(png|jpg|jpeg|gif|ico|webp|exe|dll|zip|tar|gz|woff|woff2|bin|pdf)$/i.test(file.name)) continue;
 
       try {
         const text = await file.text();
-        const ext = file.name.split(".").pop()?.toLowerCase() || "";
-        let lang = "text";
-        if (ext === "ts" || ext === "tsx") lang = "typescript";
-        else if (ext === "js" || ext === "jsx") lang = "javascript";
-        else if (ext === "json") lang = "json";
-        else if (ext === "html") lang = "html";
-        else if (ext === "css") lang = "css";
-        else if (ext === "md") lang = "markdown";
-        else if (ext === "py") lang = "python";
-        else if (ext === "rs") lang = "rust";
-        else if (ext === "toml") lang = "toml";
+        const lang = guessFrontendLanguage(file.name);
 
         let rel = file.webkitRelativePath || file.name;
         if (rel.startsWith(rootDirName + "/")) {
@@ -489,16 +572,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
     }
 
-    if (count > 0) {
-      setIsLocalFolderOverride(true);
-      setFilesMap(newFiles);
-      setOpenedFolderName(rootDirName);
-      setActiveTab("files");
-      showToast(`Opened folder "${rootDirName}" (${count} files)`);
+    setIsLocalFolderOverride(true);
+    setFilesMap(newFiles);
+    setOpenedFolderName(rootDirName);
+    setExpandedFolders({ __root__: true });
+    setActiveTab("files");
+
+    const firstKey = Object.keys(newFiles)[0];
+    if (firstKey) {
+      setSelectedFilePath(firstKey);
+      onOpenFile(newFiles[firstKey]);
     } else {
-      showToast(`Opened folder "${rootDirName}"`);
+      setSelectedFilePath("");
     }
 
+    showToast(`Opened folder "${rootDirName}" (${count} files)`);
     e.target.value = "";
     setShowFolderMenu(false);
   };
@@ -1299,17 +1387,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                   <button
                     type="button"
-                    className="popover-option-btn"
+                    className="popover-option-btn primary-option"
                     onClick={handleBrowseDesktopFolder}
-                    title="Select an existing folder from your Desktop"
+                    title="Select an existing folder from your Desktop or Computer to open live into Swarm"
                   >
                     <div className="popover-option-icon">
                       <FolderUp size={16} />
                     </div>
                     <div className="popover-option-text">
-                      <span className="popover-option-label">Browse from Desktop...</span>
+                      <span className="popover-option-label">Browse Folder on Computer...</span>
                       <span className="popover-option-desc">
-                        Use native browser folder picker
+                        Pick any folder from your machine to open its real files
                       </span>
                     </div>
                   </button>
@@ -1396,17 +1484,91 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             <div className="open-dir-body">
               <p className="open-dir-desc">
-                Enter the absolute or relative path to your project. Queen Bee, Workers, and QA Bees will read, edit, and test directly inside this repository in real time.
+                Select any repository or folder on your computer. Queen Bee, Workers, and TinyFish will inspect, edit, and test directly inside your real codebase.
               </p>
 
+              {/* Host Native Folder Browser Button */}
+              <div className="open-dir-browse-bar">
+                <button
+                  type="button"
+                  className="open-dir-browse-host-btn"
+                  onClick={handleBrowseDesktopFolder}
+                  title="Open native Windows Folder Picker to select any directory"
+                >
+                  <FolderOpen size={16} />
+                  <span>Browse Folder on Computer...</span>
+                </button>
+                <span className="open-dir-browse-hint">or click a detected folder below:</span>
+              </div>
+
+              {/* Dynamically Detected Desktop Folders */}
+              {detectedDirs?.desktop_folders && detectedDirs.desktop_folders.length > 0 && (
+                <div className="dir-presets-section">
+                  <span className="presets-title">Folders Found on your Desktop:</span>
+                  <div className="presets-chips-grid">
+                    {detectedDirs.desktop_folders.map((folder) => (
+                      <button
+                        key={folder.path}
+                        type="button"
+                        className="preset-chip-btn desktop-chip"
+                        onClick={() => handleOpenDirectoryPath(folder.path)}
+                        title={`Open ${folder.path}`}
+                      >
+                        📁 {folder.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Presets & Repo Root */}
+              <div className="dir-presets-section">
+                <span className="presets-title">Swarm Repositories & Sandbox:</span>
+                <div className="presets-chips-grid">
+                  <button
+                    type="button"
+                    className="preset-chip-btn"
+                    onClick={() => handleOpenDirectoryPath("./app")}
+                    title="Switch to Swarm Frontend app/"
+                  >
+                    📁 Swarm Frontend (./app)
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip-btn"
+                    onClick={() => handleOpenDirectoryPath("./sidecar")}
+                    title="Switch to Swarm Sidecar (./sidecar)"
+                  >
+                    📁 Swarm Sidecar (./sidecar)
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip-btn"
+                    onClick={() => handleOpenDirectoryPath(".")}
+                    title="Switch to repository root"
+                  >
+                    📁 Swarm Repo Root (.)
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip-btn reset-chip"
+                    onClick={() => handleOpenDirectoryPath("")}
+                    title="Reset to sandboxed workspace/run-default"
+                  >
+                    🫙 Default Sandbox (run-default)
+                  </button>
+                </div>
+              </div>
+
+              {/* Manual Path Input */}
               <div className="open-dir-input-group">
-                <label className="open-dir-label">Directory Path:</label>
+                <label className="open-dir-label">Or Enter / Paste Custom Path:</label>
                 <div className="open-dir-input-wrapper">
                   <HardDrive size={15} className="input-dir-icon" />
                   <input
                     type="text"
                     className="styled-dir-input"
-                    placeholder="e.g. C:\Users\tanma\Desktop\Projects\my-app or ./app"
+                    placeholder="e.g. C:\Users\tanma\Desktop\New folder\repolint or ./app"
                     value={targetDirPath}
                     onChange={(e) => setTargetDirPath(e.target.value)}
                     onKeyDown={(e) => {
@@ -1425,37 +1587,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <X size={13} />
                     </button>
                   )}
-                </div>
-              </div>
-
-              {/* Preset Quick Chips */}
-              <div className="dir-presets-section">
-                <span className="presets-title">Quick Presets:</span>
-                <div className="presets-chips-grid">
-                  <button
-                    type="button"
-                    className="preset-chip-btn"
-                    onClick={() => setTargetDirPath("./app")}
-                    title="Switch to Swarm Frontend app/"
-                  >
-                    📁 Swarm Frontend (./app)
-                  </button>
-                  <button
-                    type="button"
-                    className="preset-chip-btn"
-                    onClick={() => setTargetDirPath(".")}
-                    title="Switch to repository root"
-                  >
-                    📁 Swarm Repo Root (.)
-                  </button>
-                  <button
-                    type="button"
-                    className="preset-chip-btn reset-chip"
-                    onClick={() => setTargetDirPath("")}
-                    title="Reset to sandboxed workspace/run-default"
-                  >
-                    🫙 Default Sandbox (run-default)
-                  </button>
                 </div>
               </div>
 

@@ -752,6 +752,11 @@ def guess_file_language(filename: str) -> str:
         ".sql": "sql",
         ".txt": "text",
         ".svg": "svg",
+        ".rs": "rust",
+        ".toml": "toml",
+        ".sh": "shell",
+        ".bash": "shell",
+        ".env": "dotenv",
     }
     return mapping.get(ext, "plaintext")
 
@@ -780,9 +785,11 @@ def seed_default_workspace_if_empty(workspace_dir) -> None:
 
 
 def build_workspace_tree(run_id: str) -> Dict[str, Any]:
-    from sidecar.permissions import get_run_workspace
+    from sidecar.permissions import get_run_workspace, is_project_mode
     ws = get_run_workspace(run_id, create=True)
-    seed_default_workspace_if_empty(ws)
+    # Only seed starter files if in standard default sandbox run-default, NEVER inside external user projects
+    if not is_project_mode() and run_id == "run-default":
+        seed_default_workspace_if_empty(ws)
 
     files_list = []
     ignored_dirs = {
@@ -965,6 +972,96 @@ async def open_workspace_endpoint(payload: OpenWorkspacePayload, run_id: str = "
         logger.info("Workspace reset to default sandbox workspace/<run_id>/")
 
     return build_workspace_tree(run_id)
+
+
+@app.post("/workspace/browse")
+@app.post("/runs/{run_id}/workspace/browse")
+async def browse_workspace_endpoint(run_id: str = "run-default"):
+    """
+    Opens native Windows folder dialog on the host machine to let user pick any project directory.
+    Switches active project root to that directory and returns refreshed tree immediately.
+    """
+    import sys
+    import subprocess
+    from sidecar.permissions import set_project_root
+
+    selected_path = None
+    if sys.platform == "win32":
+        ps_code = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+            "$f.Description = 'Select project folder to open in Swarm'; "
+            "$f.ShowNewFolderButton = $true; "
+            "$form = New-Object System.Windows.Forms.Form; "
+            "$form.TopMost = $true; "
+            "if ($f.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK) { "
+            "Write-Output $f.SelectedPath "
+            "}"
+        )
+        try:
+            res = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_code],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            out = res.stdout.strip()
+            if out and Path(out).is_dir():
+                selected_path = out
+        except Exception as e:
+            logger.warning(f"Native folder dialog error: {e}")
+
+    if not selected_path:
+        return {"cancelled": True, "workspace": None, "files": [], "count": 0}
+
+    p = Path(selected_path).expanduser().resolve()
+    set_project_root(p)
+    os.environ["SWARM_PROJECT_ROOT"] = str(p)
+    logger.info(f"Workspace project root switched via native browse to: {p}")
+    return build_workspace_tree(run_id)
+
+
+@app.get("/workspace/directories")
+async def get_workspace_directories_endpoint():
+    """Returns detected common directories on host (Desktop folders, repo folders) for quick picking."""
+    from sidecar.permissions import get_project_root, get_repo_root
+    desktop = Path.home() / "Desktop"
+    desktop_folders = []
+    if desktop.exists() and desktop.is_dir():
+        for d in sorted(desktop.iterdir(), key=lambda x: x.name.lower()):
+            if d.is_dir() and not d.name.startswith("."):
+                desktop_folders.append({
+                    "name": d.name,
+                    "path": d.as_posix(),
+                })
+                # Check 1 level down for convenient nested project selection
+                try:
+                    for sub in sorted(d.iterdir(), key=lambda x: x.name.lower()):
+                        if sub.is_dir() and not sub.name.startswith("."):
+                            desktop_folders.append({
+                                "name": f"{d.name}/{sub.name}",
+                                "path": sub.as_posix(),
+                            })
+                except Exception:
+                    pass
+
+    repo_root = get_repo_root()
+    repo_folders = []
+    for d in sorted(repo_root.iterdir(), key=lambda x: x.name.lower()):
+        if d.is_dir() and not d.name.startswith(".") and d.name not in {"node_modules", ".git", ".venv", "workspace", "__pycache__"}:
+            repo_folders.append({
+                "name": d.name,
+                "path": d.as_posix(),
+            })
+
+    current_root = get_project_root()
+    return {
+        "current": current_root.as_posix() if current_root else (repo_root / "workspace" / "run-default").as_posix(),
+        "is_external": current_root is not None,
+        "desktop_path": desktop.as_posix() if desktop.exists() else None,
+        "desktop_folders": desktop_folders[:12],
+        "project_folders": repo_folders[:8],
+    }
 
 
 @app.get("/workspace/tree")
