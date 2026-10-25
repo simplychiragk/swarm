@@ -391,15 +391,19 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
                 <div className="whiteboard-title-row">
                   <h2 className="whiteboard-heading">Honeycomb Whiteboard</h2>
                   <div
-                    className="honey-progress-pill"
-                    title="Hover beehive to view remaining checklist"
+                    className={`honey-progress-pill ${totalCount === 0 ? "standby" : ""}`}
+                    title={
+                      totalCount === 0
+                        ? "Hive on standby • 0 active milestones"
+                        : "Hover beehive to view remaining checklist"
+                    }
                     onMouseEnter={() => setIsProgressPillHovered(true)}
                     onMouseLeave={() => setIsProgressPillHovered(false)}
                     onClick={() => setIsProgressPillHovered((prev) => !prev)}
                   >
-                    <span className="honey-drop-emoji">🍯</span>
-                    <span className="honey-progress-pct">{progress}% Honey</span>
-                    <span className="honey-progress-sub">({completedCount}/{totalCount} Done)</span>
+                    <span className="honey-drop-emoji">{totalCount === 0 ? "🫙" : "🍯"}</span>
+                    <span className="honey-progress-pct">{totalCount === 0 ? "Standby" : `${progress}% Honey`}</span>
+                    <span className="honey-progress-sub">({totalCount === 0 ? "0 Tasks" : `${completedCount}/${totalCount} Done`})</span>
                   </div>
                 </div>
                 <p className="whiteboard-subheading">

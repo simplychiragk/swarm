@@ -2105,6 +2105,68 @@ body {
   font-weight: 600;
 }
 
+.honey-progress-pill.standby {
+  background-color: #F1ECE1;
+  border-color: #B5A895;
+}
+
+.honey-progress-pill.standby:hover {
+  background-color: #E8E1D3;
+}
+
+.honey-progress-pill.standby .honey-progress-pct {
+  color: #635746;
+}
+
+.honey-progress-pill.standby .honey-progress-sub {
+  color: #8A7B68;
+}
+
+/* Standby popover styling */
+.checklist-standby-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.popover-pct-badge.standby-badge {
+  background-color: #F0EAE1;
+  border-color: #B8AC99;
+}
+
+.popover-pct-badge.standby-badge .pct-num {
+  color: #635746;
+}
+
+.popover-pct-badge.standby-badge .pct-label {
+  color: #8C7C68;
+}
+
+.standby-notice-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background-color: #F7F2E7;
+  border: 1.5px dashed #D1C5B0;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.standby-notice-content strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #383024;
+  margin-bottom: 2px;
+}
+
+.standby-notice-content p {
+  font-size: 10px;
+  color: #6E614E;
+  line-height: 1.35;
+  margin: 0;
+}
+
 /* -------------------------------------------------------------
    MODALS (APPROVAL, EVIDENCE, SETTINGS)
    ------------------------------------------------------------- */

@@ -70,54 +70,21 @@ export function getChecklistFromCards(cards: WhiteboardCard[]): {
 } {
   if (!cards || cards.length === 0) {
     return {
-      checklist: DEFAULT_SWARM_MILESTONES,
+      checklist: [],
       progress: 0,
       completedCount: 0,
-      totalCount: DEFAULT_SWARM_MILESTONES.length,
+      totalCount: 0,
     };
   }
 
-  const cardMap = new Map<string, WhiteboardCard>();
-  cards.forEach((c) => {
-    cardMap.set(c.id, c);
-  });
-
-  const matchedIds = new Set<string>();
-  const checklist: ChecklistItem[] = [];
-
-  DEFAULT_SWARM_MILESTONES.forEach((milestone) => {
-    const card =
-      cardMap.get(milestone.id) ||
-      cardMap.get(`card-${milestone.id}`) ||
-      cards.find((c) =>
-        c.title.toLowerCase().includes(milestone.title.toLowerCase().slice(0, 8))
-      );
-
-    if (card) {
-      matchedIds.add(card.id);
-      checklist.push({
-        id: card.id,
-        title: card.title,
-        summary: card.summary,
-        lane: card.lane,
-        status: card.status,
-      });
-    } else {
-      checklist.push(milestone);
-    }
-  });
-
-  cards.forEach((c) => {
-    if (!matchedIds.has(c.id)) {
-      checklist.push({
-        id: c.id,
-        title: c.title,
-        summary: c.summary,
-        lane: c.lane,
-        status: c.status,
-      });
-    }
-  });
+  // Pure realtime derivation strictly from live whiteboard cards
+  const checklist: ChecklistItem[] = cards.map((card) => ({
+    id: card.id,
+    title: card.title,
+    summary: card.summary,
+    lane: card.lane,
+    status: card.status,
+  }));
 
   const completedCount = checklist.filter((item) => item.status === "done").length;
   const inProgressCount = checklist.filter(
@@ -154,7 +121,7 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
   className = "",
   showText = false,
   progress = 0,
-  checklist = DEFAULT_SWARM_MILESTONES,
+  checklist = [],
   onToggleItem,
   forceOpen = false,
 }) => {
@@ -452,11 +419,11 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
           onClick={() => setIsHovered((prev) => !prev)}
           title="Click or hover to view task checklist"
         >
-          <span className="badge-honey-icon">{safeProgress > 0 ? "🍯" : "🫙"}</span>
-          <span className="badge-honey-pct">{safeProgress}% Honey</span>
+          <span className="badge-honey-icon">{totalCount === 0 ? "🫙" : safeProgress > 0 ? "🍯" : "🫙"}</span>
+          <span className="badge-honey-pct">{totalCount === 0 ? "0% Honey" : `${safeProgress}% Honey`}</span>
           <span className="badge-honey-sub">
-            {safeProgress === 0
-              ? "Empty • Hover for checklist"
+            {totalCount === 0
+              ? "Standby • Ready for goal"
               : safeProgress === 100
               ? "Hive Complete! ✨"
               : `${completedCount}/${totalCount} Done • Hover`}
@@ -473,107 +440,142 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
           role="tooltip"
           aria-label="Swarm progress and remaining checklist"
         >
-          {/* Header */}
-          <div className="checklist-popover-header">
-            <div className="popover-header-left">
-              <span className="popover-honey-emoji">🍯</span>
-              <div>
-                <h4 className="popover-title">HIVE PROGRESS</h4>
-                <span className="popover-subtitle">
-                  {completedCount} of {totalCount} Milestones Completed
-                </span>
+          {totalCount === 0 ? (
+            /* Standby State View - Pure Realtime Zero Tasks */
+            <div className="checklist-standby-view">
+              <div className="checklist-popover-header">
+                <div className="popover-header-left">
+                  <span className="popover-honey-emoji">🫙</span>
+                  <div>
+                    <h4 className="popover-title">HIVE ON STANDBY</h4>
+                    <span className="popover-subtitle">0 Active Milestones</span>
+                  </div>
+                </div>
+                <div className="popover-pct-badge standby-badge">
+                  <span className="pct-num">0%</span>
+                  <span className="pct-label">STANDBY</span>
+                </div>
+              </div>
+
+              <div className="standby-notice-box">
+                <Clock size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="standby-notice-content">
+                  <strong>Awaiting Mission Goal</strong>
+                  <p>
+                    The hive is standing by with 0 active tasks. Message Queen Bee in the Nectar Feed to plan and generate real-time milestones.
+                  </p>
+                </div>
+              </div>
+
+              <div className="checklist-popover-footer">
+                <span>💡 Tip: Ask Queen Bee to build any web app, tool, or landing page</span>
               </div>
             </div>
-            <div className="popover-pct-badge">
-              <span className="pct-num">{safeProgress}%</span>
-              <span className="pct-label">HONEY</span>
-            </div>
-          </div>
-
-          {/* Visual Progress Bar */}
-          <div className="checklist-progress-bar-container">
-            <div
-              className="checklist-progress-bar-fill"
-              style={{ width: `${safeProgress}%` }}
-            />
-          </div>
-
-          {/* Remaining Checklist ("What is left") */}
-          <div className="checklist-section what-left-section">
-            <div className="checklist-section-title what-left-title">
-              <Clock size={12} />
-              <span>WHAT'S LEFT TO DO ({remainingItems.length})</span>
-            </div>
-
-            {remainingItems.length === 0 ? (
-              <div className="checklist-all-done-banner">
-                <Sparkles size={15} className="text-amber-600 flex-shrink-0" />
-                <span>All swarm milestones reached & verified! Hive is 100% full.</span>
+          ) : (
+            <>
+              {/* Header */}
+              <div className="checklist-popover-header">
+                <div className="popover-header-left">
+                  <span className="popover-honey-emoji">🍯</span>
+                  <div>
+                    <h4 className="popover-title">HIVE PROGRESS</h4>
+                    <span className="popover-subtitle">
+                      {completedCount} of {totalCount} Milestones Completed
+                    </span>
+                  </div>
+                </div>
+                <div className="popover-pct-badge">
+                  <span className="pct-num">{safeProgress}%</span>
+                  <span className="pct-label">HONEY</span>
+                </div>
               </div>
-            ) : (
-              <div className="checklist-items-scroll">
-                {remainingItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="checklist-item remaining-item"
-                    onClick={() => onToggleItem?.(item.id)}
-                    title={onToggleItem ? "Click to toggle milestone status" : undefined}
-                  >
-                    <div className="checklist-item-status-icon">
-                      {item.status === "in_progress" ? (
-                        <Activity size={13} className="text-amber-600 animate-spin-slow" />
-                      ) : item.status === "needs_approval" ? (
-                        <AlertTriangle size={13} className="text-amber-700 animate-pulse" />
-                      ) : (
-                        <div className="empty-check-circle" />
-                      )}
-                    </div>
-                    <div className="checklist-item-body">
-                      <div className="checklist-item-header">
-                        <span className="checklist-item-name">{item.title}</span>
-                        {item.lane && (
-                          <span className={`checklist-lane-badge lane-${item.lane.toLowerCase()}`}>
-                            {item.lane}
-                          </span>
-                        )}
+
+              {/* Visual Progress Bar */}
+              <div className="checklist-progress-bar-container">
+                <div
+                  className="checklist-progress-bar-fill"
+                  style={{ width: `${safeProgress}%` }}
+                />
+              </div>
+
+              {/* Remaining Checklist ("What is left") */}
+              <div className="checklist-section what-left-section">
+                <div className="checklist-section-title what-left-title">
+                  <Clock size={12} />
+                  <span>WHAT'S LEFT TO DO ({remainingItems.length})</span>
+                </div>
+
+                {remainingItems.length === 0 ? (
+                  <div className="checklist-all-done-banner">
+                    <Sparkles size={15} className="text-amber-600 flex-shrink-0" />
+                    <span>All swarm milestones reached & verified! Hive is 100% full.</span>
+                  </div>
+                ) : (
+                  <div className="checklist-items-scroll">
+                    {remainingItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="checklist-item remaining-item"
+                        onClick={() => onToggleItem?.(item.id)}
+                        title={onToggleItem ? "Click to toggle milestone status" : undefined}
+                      >
+                        <div className="checklist-item-status-icon">
+                          {item.status === "in_progress" ? (
+                            <Activity size={13} className="text-amber-600 animate-spin-slow" />
+                          ) : item.status === "needs_approval" ? (
+                            <AlertTriangle size={13} className="text-amber-700 animate-pulse" />
+                          ) : (
+                            <div className="empty-check-circle" />
+                          )}
+                        </div>
+                        <div className="checklist-item-body">
+                          <div className="checklist-item-header">
+                            <span className="checklist-item-name">{item.title}</span>
+                            {item.lane && (
+                              <span className={`checklist-lane-badge lane-${item.lane.toLowerCase()}`}>
+                                {item.lane}
+                              </span>
+                            )}
+                          </div>
+                          <p className="checklist-item-summary">{item.summary}</p>
+                        </div>
                       </div>
-                      <p className="checklist-item-summary">{item.summary}</p>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Completed Items Section */}
-          {completedItems.length > 0 && (
-            <div className="checklist-section completed-section">
-              <div className="checklist-section-title completed-title">
-                <CheckCircle size={12} className="text-emerald-700" />
-                <span>COMPLETED ({completedItems.length})</span>
-              </div>
-              <div className="checklist-items-scroll completed-items-list">
-                {completedItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="checklist-item completed-item"
-                    onClick={() => onToggleItem?.(item.id)}
-                    title={onToggleItem ? "Click to toggle milestone status" : undefined}
-                  >
-                    <Check size={12} className="text-emerald-700 flex-shrink-0 mt-0.5" />
-                    <div className="checklist-item-body">
-                      <span className="checklist-item-name done-strikethrough">{item.title}</span>
-                    </div>
+              {/* Completed Items Section */}
+              {completedItems.length > 0 && (
+                <div className="checklist-section completed-section">
+                  <div className="checklist-section-title completed-title">
+                    <CheckCircle size={12} className="text-emerald-700" />
+                    <span>COMPLETED ({completedItems.length})</span>
                   </div>
-                ))}
+                  <div className="checklist-items-scroll completed-items-list">
+                    {completedItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="checklist-item completed-item"
+                        onClick={() => onToggleItem?.(item.id)}
+                        title={onToggleItem ? "Click to toggle milestone status" : undefined}
+                      >
+                        <Check size={12} className="text-emerald-700 flex-shrink-0 mt-0.5" />
+                        <div className="checklist-item-body">
+                          <span className="checklist-item-name done-strikethrough">{item.title}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Footer note */}
+              <div className="checklist-popover-footer">
+                <span>💡 Swarm milestones update dynamically as agents plan, build & verify</span>
               </div>
-            </div>
+            </>
           )}
-
-          {/* Footer note */}
-          <div className="checklist-popover-footer">
-            <span>💡 Send a message in the chat to start the swarm & fill the hive</span>
-          </div>
         </div>
       )}
 
@@ -588,15 +590,15 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
               marginBottom: "4px",
             }}
           >
-            {safeProgress === 0
+            {totalCount === 0
               ? "The Hive is Standing By"
               : safeProgress === 100
               ? "The Hive is Complete!"
               : `The Hive is Working (${safeProgress}% Honey)`}
           </h3>
           <p style={{ fontSize: "12px", color: "#7A6C58", maxWidth: "340px", lineHeight: "1.4" }}>
-            {safeProgress === 0
-              ? "Send a message in the chat to watch the swarm research, build, and verify live while filling the hive."
+            {totalCount === 0
+              ? "Message Queen Bee in the Nectar Feed to plan and generate real-time milestones."
               : safeProgress === 100
               ? "All milestones are done and verified with live evidence. The hive is overflowing with honey!"
               : "Hover over the beehive to view the remaining milestone checklist."}
