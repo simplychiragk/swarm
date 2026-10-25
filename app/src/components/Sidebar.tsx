@@ -136,6 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [workspacePath, setWorkspacePath] = useState<string>("");
   const [workspaceName, setWorkspaceName] = useState<string>("workspace");
   const [openedFolderName, setOpenedFolderName] = useState<string | null>(null);
+  const [isLocalFolderOverride, setIsLocalFolderOverride] = useState(false);
 
   // Files map keyed by file.path (e.g. "index.html", "src/App.tsx", "api/main.py")
   const [filesMap, setFilesMap] = useState<Record<string, ProjectFile>>({});
@@ -152,6 +153,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedFilePath, setSelectedFilePath] = useState<string>("");
   const [sidebarToast, setSidebarToast] = useState<string | null>(null);
+
+  // Open Directory Modal state
+  const [showOpenDirModal, setShowOpenDirModal] = useState(false);
+  const [targetDirPath, setTargetDirPath] = useState("");
+  const [isSwitchingDir, setIsSwitchingDir] = useState(false);
 
   // Desktop folder opening & popover state
   const [showFolderMenu, setShowFolderMenu] = useState(false);
@@ -186,19 +192,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && showFolderMenu) {
-        setShowFolderMenu(false);
+      if (e.key === "Escape") {
+        if (showOpenDirModal) setShowOpenDirModal(false);
+        if (showFolderMenu) setShowFolderMenu(false);
       }
     };
-    if (showFolderMenu) {
-      document.addEventListener("mousedown", handleOutsideClick);
-      document.addEventListener("keydown", handleKeyDown);
-    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [showFolderMenu]);
+  }, [showFolderMenu, showOpenDirModal]);
 
   const showToast = (msg: string) => {
     setSidebarToast(msg);
@@ -208,14 +213,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const toggleFolder = (folderKey: string) => {
-    setExpandedFolders((prev) => ({
-      ...prev,
-      [folderKey]: prev[folderKey] === false ? true : false,
-    }));
+    setExpandedFolders((prev) => {
+      const isCurrentlyExpanded = prev[folderKey] !== false; // default true
+      return {
+        ...prev,
+        [folderKey]: !isCurrentlyExpanded,
+      };
+    });
   };
 
   // Real-time workspace tree fetch from sidecar
   const fetchWorkspaceTree = async () => {
+    // If user is currently browsing an offline custom folder, don't wipe it out
+    if (isLocalFolderOverride) return;
+
     try {
       const res = await fetch("http://127.0.0.1:8000/workspace/tree");
       if (res.ok) {
@@ -238,7 +249,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }
           setFilesMap(newMap);
 
-          // Select first file if nothing selected yet
           if (!selectedFilePath && data.files[0]) {
             setSelectedFilePath(data.files[0].path);
           }
@@ -261,17 +271,74 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Periodic poll every 4 seconds when Files tab is active
   useEffect(() => {
-    if (activeTab === "files") {
+    if (activeTab === "files" && !isLocalFolderOverride) {
       const timer = setInterval(fetchWorkspaceTree, 4000);
       return () => clearInterval(timer);
     }
-  }, [activeTab]);
+  }, [activeTab, isLocalFolderOverride]);
 
   const handleRefreshTree = async () => {
     setIsRefreshing(true);
+    setIsLocalFolderOverride(false);
+    setOpenedFolderName(null);
     await fetchWorkspaceTree();
     setIsRefreshing(false);
     showToast(`Workspace refreshed (${Object.keys(filesMap).length} files)`);
+  };
+
+  // Open directory via sidecar POST /workspace/open (Gap 1 External Project Mode)
+  const handleOpenDirectoryPath = async (dirToOpen: string) => {
+    setIsSwitchingDir(true);
+    try {
+      const res = await fetch("http://127.0.0.1:8000/workspace/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: dirToOpen.trim() }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setIsLocalFolderOverride(false);
+        setOpenedFolderName(null);
+
+        if (data.workspace) {
+          setWorkspacePath(data.workspace);
+          const normalized = data.workspace.replace(/\\/g, "/").replace(/\/$/, "");
+          const folderName = normalized.split("/").pop() || "workspace";
+          setWorkspaceName(folderName);
+        }
+
+        const newMap: Record<string, ProjectFile> = {};
+        if (data.files && Array.isArray(data.files)) {
+          for (const f of data.files) {
+            newMap[f.path] = {
+              name: f.name,
+              path: f.path,
+              language: f.language,
+              content: f.content,
+            };
+          }
+        }
+        setFilesMap(newMap);
+        setShowOpenDirModal(false);
+        setTargetDirPath("");
+        setActiveTab("files");
+
+        if (dirToOpen.trim()) {
+          showToast(`Opened directory "${workspaceName}" (${data.count} files)`);
+        } else {
+          showToast("Reset to default sandbox workspace");
+        }
+      } else {
+        const err = await res.json().catch(() => ({ detail: "Directory not found" }));
+        showToast(`Failed to open: ${err.detail || "Directory does not exist"}`);
+      }
+    } catch (e) {
+      console.error("Failed to switch workspace directory:", e);
+      showToast("Could not connect to sidecar to open directory");
+    } finally {
+      setIsSwitchingDir(false);
+    }
   };
 
   // Open existing folder on Desktop using native browser directory picker or fallback
@@ -292,9 +359,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const readEntries = async (handle: any, currentPath: string) => {
-          if (count >= 200) return;
+          if (count >= 300) return;
           for await (const entry of handle.values()) {
-            if (count >= 200) break;
+            if (count >= 300) break;
             const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
             if (entry.kind === "file") {
               if (
@@ -347,6 +414,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         await readEntries(dirHandle, "");
 
         if (count > 0) {
+          setIsLocalFolderOverride(true);
           setFilesMap(newFiles);
           setOpenedFolderName(rootName);
           setActiveTab("files");
@@ -357,12 +425,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         if ((err as Error)?.name === "AbortError") {
           return;
         }
-        console.warn("Directory picker error, falling back to input:", err);
+        console.warn("Directory picker error, opening path dialog:", err);
       }
     }
 
-    // Fallback: trigger HTML5 directory picker
-    folderInputRef.current?.click();
+    // Open directory path modal directly for guaranteed path entry
+    setShowOpenDirModal(true);
   };
 
   // HTML5 folder selection change handler
@@ -382,7 +450,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     let count = 0;
-    for (let i = 0; i < fileList.length && count < 200; i++) {
+    for (let i = 0; i < fileList.length && count < 300; i++) {
       const file = fileList[i];
       if (file.size > 500 * 1024) continue;
       if (file.webkitRelativePath.includes("/.git/")) continue;
@@ -404,7 +472,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         else if (ext === "rs") lang = "rust";
         else if (ext === "toml") lang = "toml";
 
-        // Remove the top folder segment for clean relative display
         let rel = file.webkitRelativePath || file.name;
         if (rel.startsWith(rootDirName + "/")) {
           rel = rel.substring(rootDirName.length + 1);
@@ -423,6 +490,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     if (count > 0) {
+      setIsLocalFolderOverride(true);
       setFilesMap(newFiles);
       setOpenedFolderName(rootDirName);
       setActiveTab("files");
@@ -456,8 +524,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       navigator.clipboard.writeText(targetPath);
       showToast(`Copied CWD path: ${targetPath}`);
     } else {
-      showToast("Opening folder picker");
-      handleBrowseDesktopFolder();
+      setShowOpenDirModal(true);
     }
   };
 
@@ -631,7 +698,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div
               className={`tree-item folder-item indent-${Math.min(depth, 5)}`}
               onClick={() => toggleFolder(node.fullPath)}
-              title={`Folder: ${node.fullPath}`}
+              title={`Folder: ${node.fullPath} (Click to toggle)`}
             >
               <div className="tree-item-left">
                 {isExpanded ? (
@@ -943,13 +1010,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="cwd-tag">CWD</span>
                 <span className="cwd-path-text" title={workspacePath || "workspace/run-default"}>
                   {workspacePath
-                    ? workspacePath.length > 34
-                      ? `...${workspacePath.slice(-32)}`
+                    ? workspacePath.length > 30
+                      ? `...${workspacePath.slice(-28)}`
                       : workspacePath
                     : "workspace/run-default"}
                 </span>
               </div>
               <div className="cwd-indicator-right">
+                <button
+                  type="button"
+                  className="cwd-icon-btn"
+                  onClick={() => setShowOpenDirModal(true)}
+                  title="Open different project directory / repo"
+                >
+                  <FolderOpen size={12} />
+                </button>
                 <button
                   type="button"
                   className="cwd-icon-btn"
@@ -976,12 +1051,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
-            {/* Tree Root */}
+            {/* Tree Root Header */}
             <div className="tree-root-header">
               <div
                 className="tree-root-label"
                 onClick={() => toggleFolder("__root__")}
-                title={`Root: ${workspacePath || displayRootName}`}
+                title={`Root: ${workspacePath || displayRootName} (Click to toggle)`}
               >
                 {expandedFolders.__root__ !== false ? (
                   <ChevronDown size={14} className="tree-arrow" />
@@ -992,8 +1067,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="live-workspace-badge">LIVE CWD</span>
               </div>
 
-              {/* Functional Action Icons: New File, New Folder, Refresh */}
+              {/* Action Icons: Open Dir, New File, New Folder, Refresh */}
               <div className="tree-root-actions">
+                <button
+                  type="button"
+                  className="tree-action-btn"
+                  title="Open Directory / Project Folder"
+                  onClick={() => setShowOpenDirModal(true)}
+                >
+                  <FolderUp size={13} />
+                </button>
+
                 <button
                   type="button"
                   className="tree-action-btn"
@@ -1097,7 +1181,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <div className="empty-tree-placeholder">
                     <HardDrive size={18} className="text-stone-400" />
                     <span>Working Directory is Empty</span>
-                    <p>Ask Queen Bee to build a project or click '+' to create files.</p>
+                    <p>Ask Queen Bee to build a project, click '+' to create files, or click 'Open Directory'.</p>
+                    <button
+                      type="button"
+                      className="open-dir-cta-btn"
+                      onClick={() => setShowOpenDirModal(true)}
+                    >
+                      <FolderOpen size={13} />
+                      <span>Open Project Directory</span>
+                    </button>
                   </div>
                 ) : (
                   renderTreeNode(treeRoot)
@@ -1171,6 +1263,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     type="button"
                     className="popover-option-btn primary-option"
+                    onClick={() => {
+                      setShowFolderMenu(false);
+                      setShowOpenDirModal(true);
+                    }}
+                    title="Open any repository or project directory on this computer"
+                  >
+                    <div className="popover-option-icon">
+                      <FolderOpen size={16} />
+                    </div>
+                    <div className="popover-option-text">
+                      <span className="popover-option-label">Open Directory / Repo...</span>
+                      <span className="popover-option-desc">
+                        Switch live agent working directory to an existing project
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="popover-option-btn"
                     onClick={handleOpenInSystemExplorer}
                     title="Open Working Directory in Windows File Explorer"
                   >
@@ -1189,15 +1301,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     type="button"
                     className="popover-option-btn"
                     onClick={handleBrowseDesktopFolder}
-                    title="Select an existing folder from your Desktop to open into Swarm"
+                    title="Select an existing folder from your Desktop"
                   >
                     <div className="popover-option-icon">
                       <FolderUp size={16} />
                     </div>
                     <div className="popover-option-text">
-                      <span className="popover-option-label">Open Folder from Desktop...</span>
+                      <span className="popover-option-label">Browse from Desktop...</span>
                       <span className="popover-option-desc">
-                        Browse external repository or desktop folder
+                        Use native browser folder picker
                       </span>
                     </div>
                   </button>
@@ -1206,19 +1318,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     type="button"
                     className="popover-option-btn"
                     onClick={() => {
-                      setOpenedFolderName(null);
-                      handleRefreshTree();
+                      handleOpenDirectoryPath("");
                       setShowFolderMenu(false);
                     }}
-                    title="Reload files directly from live sidecar workspace"
+                    title="Reset back to standard sandbox workspace/run-default/"
                   >
                     <div className="popover-option-icon">
                       <RefreshCw size={16} />
                     </div>
                     <div className="popover-option-text">
-                      <span className="popover-option-label">Reload Live Workspace</span>
+                      <span className="popover-option-label">Reset to Sandbox Workspace</span>
                       <span className="popover-option-desc">
-                        Fetch latest agent changes from working directory
+                        Switch back to isolated workspace/run-default/
                       </span>
                     </div>
                   </button>
@@ -1250,6 +1361,130 @@ export const Sidebar: React.FC<SidebarProps> = ({
         style={{ display: "none" }}
         onChange={handleFolderInputSelected}
       />
+
+      {/* Open Project Directory Modal */}
+      {showOpenDirModal && (
+        <div className="modal-backdrop" onClick={() => setShowOpenDirModal(false)}>
+          <div
+            className="open-dir-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="open-dir-title"
+          >
+            <div className="open-dir-header">
+              <div className="open-dir-header-left">
+                <FolderOpen size={18} className="text-amber-800" />
+                <div>
+                  <h3 id="open-dir-title" className="open-dir-title">
+                    Open Project Directory
+                  </h3>
+                  <span className="open-dir-subtitle">
+                    Escape the sandbox: attach Swarm directly to any existing codebase (Gap 1)
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="retro-icon-btn"
+                onClick={() => setShowOpenDirModal(false)}
+                title="Close (Esc)"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="open-dir-body">
+              <p className="open-dir-desc">
+                Enter the absolute or relative path to your project. Queen Bee, Workers, and QA Bees will read, edit, and test directly inside this repository in real time.
+              </p>
+
+              <div className="open-dir-input-group">
+                <label className="open-dir-label">Directory Path:</label>
+                <div className="open-dir-input-wrapper">
+                  <HardDrive size={15} className="input-dir-icon" />
+                  <input
+                    type="text"
+                    className="styled-dir-input"
+                    placeholder="e.g. C:\Users\tanma\Desktop\Projects\my-app or ./app"
+                    value={targetDirPath}
+                    onChange={(e) => setTargetDirPath(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && targetDirPath.trim()) {
+                        handleOpenDirectoryPath(targetDirPath.trim());
+                      }
+                    }}
+                    autoFocus
+                  />
+                  {targetDirPath && (
+                    <button
+                      type="button"
+                      className="input-clear-btn"
+                      onClick={() => setTargetDirPath("")}
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Preset Quick Chips */}
+              <div className="dir-presets-section">
+                <span className="presets-title">Quick Presets:</span>
+                <div className="presets-chips-grid">
+                  <button
+                    type="button"
+                    className="preset-chip-btn"
+                    onClick={() => setTargetDirPath("./app")}
+                    title="Switch to Swarm Frontend app/"
+                  >
+                    📁 Swarm Frontend (./app)
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip-btn"
+                    onClick={() => setTargetDirPath(".")}
+                    title="Switch to repository root"
+                  >
+                    📁 Swarm Repo Root (.)
+                  </button>
+                  <button
+                    type="button"
+                    className="preset-chip-btn reset-chip"
+                    onClick={() => setTargetDirPath("")}
+                    title="Reset to sandboxed workspace/run-default"
+                  >
+                    🫙 Default Sandbox (run-default)
+                  </button>
+                </div>
+              </div>
+
+              <div className="open-dir-note">
+                <span>🛡️ Path safety boundaries apply: secrets like <code>.env</code>, private keys, and <code>.git/</code> are strictly protected against modification.</span>
+              </div>
+            </div>
+
+            <div className="open-dir-footer">
+              <button
+                type="button"
+                className="retro-btn retro-btn-secondary"
+                onClick={() => setShowOpenDirModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="retro-btn retro-btn-primary open-dir-submit-btn"
+                onClick={() => handleOpenDirectoryPath(targetDirPath.trim())}
+                disabled={isSwitchingDir}
+              >
+                {isSwitchingDir ? <RefreshCw size={14} className="spin-icon" /> : <FolderOpen size={14} />}
+                <span>{targetDirPath.trim() ? "Open Directory" : "Reset to Sandbox"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };

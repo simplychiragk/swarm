@@ -785,22 +785,58 @@ def build_workspace_tree(run_id: str) -> Dict[str, Any]:
     seed_default_workspace_if_empty(ws)
 
     files_list = []
-    for p in ws.rglob("*"):
-        if p.is_file():
-            rel_path = p.relative_to(ws).as_posix()
-            if "__pycache__" in rel_path or ".git" in rel_path:
-                continue
-            try:
-                content = p.read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                content = ""
-            files_list.append({
-                "name": p.name,
-                "path": rel_path,
-                "language": guess_file_language(p.name),
-                "content": content,
-                "size": p.stat().st_size,
-            })
+    ignored_dirs = {
+        "node_modules", ".git", "dist", "build", ".next", ".nuxt",
+        ".venv", "venv", "__pycache__", ".turbo", ".cache", "target",
+        ".idea", ".vscode", "coverage"
+    }
+
+    ignored_exts = {
+        ".pyc", ".pyo", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp",
+        ".woff", ".woff2", ".ttf", ".eot", ".exe", ".dll", ".so", ".dylib",
+        ".zip", ".tar", ".gz", ".lock", ".bin"
+    }
+
+    try:
+        for root, dirs, files in os.walk(ws):
+            dirs[:] = [d for d in dirs if d not in ignored_dirs and not d.startswith(".")]
+            for file in files:
+                if file.startswith("."):
+                    continue
+                ext = Path(file).suffix.lower()
+                if ext in ignored_exts:
+                    continue
+                p = Path(root) / file
+                try:
+                    rel_path = p.relative_to(ws).as_posix()
+                except ValueError:
+                    continue
+                
+                try:
+                    file_size = p.stat().st_size
+                    # Limit content read to 256KB to keep tree payload snappy
+                    if file_size <= 256 * 1024:
+                        content = p.read_text(encoding="utf-8", errors="replace")
+                    else:
+                        content = "// File size exceeds 256KB preview limit"
+                except Exception:
+                    content = ""
+                    file_size = 0
+
+                files_list.append({
+                    "name": p.name,
+                    "path": rel_path,
+                    "language": guess_file_language(p.name),
+                    "content": content,
+                    "size": file_size,
+                })
+
+                if len(files_list) >= 400:
+                    break
+            if len(files_list) >= 400:
+                break
+    except Exception as e:
+        logger.warning(f"Error scanning workspace {ws}: {e}")
 
     files_list.sort(key=lambda x: x["path"])
     return {
@@ -900,6 +936,35 @@ async def preview_run_endpoint(run_id: str = "run-default", subpath: str = ""):
     ext = file_path.suffix.lower()
     media_type = ALLOWED_CONTENT_TYPES.get(ext, "application/octet-stream")
     return FileResponse(path=file_path, media_type=media_type)
+
+
+class OpenWorkspacePayload(BaseModel):
+    path: Optional[str] = None
+
+
+@app.post("/workspace/open")
+@app.post("/runs/{run_id}/workspace/open")
+async def open_workspace_endpoint(payload: OpenWorkspacePayload, run_id: str = "run-default"):
+    """
+    Sets the active project root (Gap 1) to the specified directory, or resets to default sandbox.
+    Returns the refreshed workspace tree immediately.
+    """
+    from sidecar.permissions import set_project_root
+    from fastapi import HTTPException
+    raw_path = (payload.path or "").strip()
+    if raw_path:
+        p = Path(raw_path).expanduser().resolve()
+        if not p.exists() or not p.is_dir():
+            raise HTTPException(status_code=400, detail=f"Directory '{p}' does not exist or is not a directory.")
+        set_project_root(p)
+        os.environ["SWARM_PROJECT_ROOT"] = str(p)
+        logger.info(f"Workspace project root switched to: {p}")
+    else:
+        set_project_root(None)
+        os.environ.pop("SWARM_PROJECT_ROOT", None)
+        logger.info("Workspace reset to default sandbox workspace/<run_id>/")
+
+    return build_workspace_tree(run_id)
 
 
 @app.get("/workspace/tree")

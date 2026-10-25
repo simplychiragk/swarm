@@ -5081,3 +5081,222 @@ body {
   background-color: #E29A1F !important;
   color: #FFF !important;
 }
+
+/* =============================================================
+   OPEN DIRECTORY MODAL & TREE FOLDER INDENTATION
+   ============================================================= */
+
+.tree-folder-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-folder-children {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.indent-0 { padding-left: 6px !important; }
+.indent-1 { padding-left: 18px !important; }
+.indent-2 { padding-left: 30px !important; }
+.indent-3 { padding-left: 42px !important; }
+.indent-4 { padding-left: 54px !important; }
+.indent-5 { padding-left: 66px !important; }
+
+.open-dir-modal-card {
+  width: 100%;
+  max-width: 520px;
+  background-color: #FAF4E6;
+  border: 2px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: 4px 4px 0px rgba(30, 27, 24, 0.45), 0 20px 40px rgba(30, 27, 24, 0.25);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: modalFadeUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.open-dir-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background-color: #F2E5CC;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.open-dir-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.open-dir-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #2E2822;
+  margin: 0;
+  letter-spacing: -0.2px;
+}
+
+.open-dir-subtitle {
+  font-size: 10.5px;
+  color: #7A664E;
+  display: block;
+  font-weight: 600;
+}
+
+.open-dir-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.open-dir-desc {
+  font-size: 11.5px;
+  color: #5C4C38;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.open-dir-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.open-dir-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #3B3125;
+}
+
+.open-dir-input-wrapper {
+  display: flex;
+  align-items: center;
+  background-color: #FFFDF8;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  gap: 8px;
+  box-shadow: inset 1px 1px 2px rgba(30, 27, 24, 0.1);
+}
+
+.input-dir-icon {
+  color: #8C7860;
+  flex-shrink: 0;
+}
+
+.styled-dir-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #2E2822;
+}
+
+.styled-dir-input::placeholder {
+  color: #9C8B77;
+}
+
+.dir-presets-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.presets-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #6B5B49;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.presets-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preset-chip-btn {
+  background-color: #F1E5CF;
+  border: 1.2px solid #C4B399;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #382D20;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.preset-chip-btn:hover {
+  background-color: #E8D9BD;
+  border-color: #9E886B;
+  transform: translateY(-1px);
+}
+
+.preset-chip-btn.reset-chip {
+  background-color: #E2ECE5;
+  border-color: #96C4A6;
+  color: #16532B;
+}
+
+.preset-chip-btn.reset-chip:hover {
+  background-color: #D3E5D8;
+}
+
+.open-dir-note {
+  background-color: #F5EEDD;
+  border: 1px dashed #C9B89D;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 10px;
+  color: #63533E;
+  line-height: 1.35;
+}
+
+.open-dir-note code {
+  background-color: #E8DDCA;
+  padding: 1px 3px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+}
+
+.open-dir-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  background-color: #F2E5CC;
+  border-top: 1.5px solid var(--color-border);
+}
+
+.open-dir-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #E5A12D;
+  color: #1E1B18;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 1.5px 1.5px 0px #1E1B18;
+  margin-top: 6px;
+  transition: all 0.12s ease;
+}
+
+.open-dir-cta-btn:hover {
+  background-color: #D4901C;
+  transform: translate(-1px, -1px);
+  box-shadow: 2.5px 2.5px 0px #1E1B18;
+}
