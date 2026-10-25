@@ -89,10 +89,12 @@ async def _call_provider_http(
     model = provider.get_model(tier)
     url = f"{provider.base_url.rstrip('/')}/chat/completions"
 
-    headers = {
-        "Authorization": f"Bearer {provider.get_api_key()}",
+    headers: Dict[str, str] = {
         "Content-Type": "application/json",
     }
+    api_key = provider.get_api_key()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     headers.update(provider.extra_headers)
 
     max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "2048"))
@@ -158,10 +160,12 @@ async def _stream_deltas(
                 continue
             model = provider.get_model(tier)
             url = f"{provider.base_url.rstrip('/')}/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {provider.get_api_key()}",
+            headers: Dict[str, str] = {
                 "Content-Type": "application/json",
             }
+            api_key = provider.get_api_key()
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
             headers.update(provider.extra_headers)
             max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "2048"))
             if provider.name == "openrouter":

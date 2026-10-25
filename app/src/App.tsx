@@ -97,6 +97,7 @@ export function App() {
             onResetBoard={resetBoard}
             isSidebarOpen={isSidebarOpen}
             onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
           />
         </main>
       </div>

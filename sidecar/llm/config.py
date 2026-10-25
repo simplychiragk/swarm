@@ -93,6 +93,27 @@ def get_available_providers() -> List[ProviderConfig]:
     return [p for p in PROVIDER_CHAIN if p.is_configured()]
 
 
+def update_provider_config(
+    name: str,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    smart_model: Optional[str] = None,
+    fast_model: Optional[str] = None,
+) -> None:
+    """Updates provider configuration at runtime dynamically."""
+    for provider in PROVIDER_CHAIN:
+        if provider.name == name:
+            if base_url:
+                provider.base_url = base_url
+            if smart_model:
+                provider.models_by_tier["smart"] = smart_model
+            if fast_model:
+                provider.models_by_tier["fast"] = fast_model
+            if api_key:
+                os.environ[provider.api_key_env] = api_key
+            break
+
+
 def validate_startup_config() -> List[str]:
     """
     Validates LLM configuration at startup and returns user-friendly advisory messages.

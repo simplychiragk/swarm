@@ -26,7 +26,7 @@ interface SettingsModalProps {
   wsUrl: string;
 }
 
-type ProviderKey = "openai" | "claude" | "gemini" | "openrouter" | "nvidia" | "ollama";
+type ProviderKey = "pollinations" | "openrouter" | "openai" | "claude" | "gemini" | "nvidia" | "ollama";
 
 interface ProviderPreset {
   id: ProviderKey;
@@ -42,6 +42,30 @@ interface ProviderPreset {
 }
 
 const PROVIDER_PRESETS: Record<ProviderKey, ProviderPreset> = {
+  pollinations: {
+    id: "pollinations",
+    name: "Pollinations AI",
+    badge: "GPT-5.4 Nano",
+    icon: "🌸",
+    defaultBaseUrl: "https://gen.pollinations.ai/v1",
+    defaultSmartModel: "openai/gpt-5.4-nano",
+    defaultFastModel: "openai/gpt-5.4-nano",
+    placeholderKey: "polli_... (or leave blank for public)",
+    keyPrefix: "",
+    description: "Ultra-fast generation powered by openai/gpt-5.4-nano. Direct native integration with Pollinations AI.",
+  },
+  openrouter: {
+    id: "openrouter",
+    name: "OpenRouter",
+    badge: "Multi-Model Router",
+    icon: "🌐",
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    defaultSmartModel: "openai/gpt-5.4-nano",
+    defaultFastModel: "openai/gpt-5.4-nano",
+    placeholderKey: "sk-or-v1-...",
+    keyPrefix: "sk-or",
+    description: "One key for all models: GPT-5.4 Nano, DeepSeek R1, Llama 3.3, and free community endpoints with fallback routing.",
+  },
   openai: {
     id: "openai",
     name: "OpenAI / BYOK",
@@ -78,18 +102,6 @@ const PROVIDER_PRESETS: Record<ProviderKey, ProviderPreset> = {
     keyPrefix: "AIza",
     description: "Gemini 2.0 Flash provides blazing-fast speed and high token throughput for live Swarm executions.",
   },
-  openrouter: {
-    id: "openrouter",
-    name: "OpenRouter",
-    badge: "Multi-Model Router",
-    icon: "🌐",
-    defaultBaseUrl: "https://openrouter.ai/api/v1",
-    defaultSmartModel: "deepseek/deepseek-r1",
-    defaultFastModel: "meta-llama/llama-3.3-70b-instruct:free",
-    placeholderKey: "sk-or-v1-...",
-    keyPrefix: "sk-or",
-    description: "One key for all models: DeepSeek R1, Llama 3.3, and free community endpoints with fallback routing.",
-  },
   nvidia: {
     id: "nvidia",
     name: "NVIDIA NIM",
@@ -125,11 +137,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   wsUrl,
 }) => {
   const [activeTab, setActiveTab] = useState<"ai_agent" | "tinyfish" | "runtime">("ai_agent");
-  const [selectedProvider, setSelectedProvider] = useState<ProviderKey>("openai");
+  const [selectedProvider, setSelectedProvider] = useState<ProviderKey>("pollinations");
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState(PROVIDER_PRESETS.openai.defaultBaseUrl);
-  const [smartModel, setSmartModel] = useState(PROVIDER_PRESETS.openai.defaultSmartModel);
-  const [fastModel, setFastModel] = useState(PROVIDER_PRESETS.openai.defaultFastModel);
+  const [baseUrl, setBaseUrl] = useState(PROVIDER_PRESETS.pollinations.defaultBaseUrl);
+  const [smartModel, setSmartModel] = useState(PROVIDER_PRESETS.pollinations.defaultSmartModel);
+  const [fastModel, setFastModel] = useState(PROVIDER_PRESETS.pollinations.defaultFastModel);
   const [showKey, setShowKey] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -166,8 +178,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (parsed.tinyFishKey) setTinyFishKey(parsed.tinyFishKey);
         if (parsed.swarmMode) setSwarmMode(parsed.swarmMode);
       } else {
-        // Initial friendly demo key
-        setApiKey("sk-proj-swarm2026livekey99x4b81");
+        setSelectedProvider("pollinations");
+        setBaseUrl(PROVIDER_PRESETS.pollinations.defaultBaseUrl);
+        setSmartModel(PROVIDER_PRESETS.pollinations.defaultSmartModel);
+        setFastModel(PROVIDER_PRESETS.pollinations.defaultFastModel);
+        setApiKey("");
       }
     } catch {
       // fallback
@@ -199,7 +214,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleTestConnection = async () => {
-    if (!apiKey && selectedProvider !== "ollama") {
+    if (!apiKey && selectedProvider !== "ollama" && selectedProvider !== "pollinations") {
       setTestResult({
         status: "error",
         message: "Please enter an API key to test the connection handshake.",
@@ -222,7 +237,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }, 750);
   };
 
-  const handleSaveAndConnect = () => {
+  const handleSaveAndConnect = async () => {
     const config = {
       provider: selectedProvider,
       apiKey,
@@ -236,8 +251,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      window.dispatchEvent(new Event("swarm_config_updated"));
     } catch {
       // ignore
+    }
+
+    try {
+      await fetch("http://127.0.0.1:8000/config/llm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+    } catch {
+      // safe fallback if sidecar running in test or offline
     }
 
     setSavedNotification(true);

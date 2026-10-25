@@ -116,6 +116,35 @@ async def health_deps_endpoint():
     return await check_llm_dependencies()
 
 
+class LLMConfigRequest(BaseModel):
+    provider: Optional[str] = None
+    apiKey: Optional[str] = None
+    baseUrl: Optional[str] = None
+    smartModel: Optional[str] = None
+    fastModel: Optional[str] = None
+    tinyFishKey: Optional[str] = None
+    swarmMode: Optional[str] = None
+
+
+@app.post("/config/llm")
+async def update_llm_config_endpoint(cfg: LLMConfigRequest):
+    """Receives provider config from UI settings and updates sidecar runtime state."""
+    from sidecar.llm.config import update_provider_config
+    if cfg.provider:
+        update_provider_config(
+            name=cfg.provider,
+            api_key=cfg.apiKey,
+            base_url=cfg.baseUrl,
+            smart_model=cfg.smartModel,
+            fast_model=cfg.fastModel,
+        )
+    if cfg.tinyFishKey:
+        os.environ["TINYFISH_API_KEY"] = cfg.tinyFishKey
+    if cfg.swarmMode:
+        os.environ["SWARM_MODE"] = cfg.swarmMode
+    return {"status": "ok", "provider": cfg.provider, "applied": True}
+
+
 
 async def handle_inbound_envelope(envelope: InboundEnvelope, run_id: str = "run-default") -> None:
     """Route inbound client envelope based on SWARM_MODE and record to SQLite storage."""

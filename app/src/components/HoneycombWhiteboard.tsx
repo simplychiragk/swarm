@@ -25,6 +25,7 @@ interface HoneycombWhiteboardProps {
   onResetBoard: () => void;
   isSidebarOpen?: boolean;
   onToggleSidebar?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
@@ -35,10 +36,62 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
   onResetBoard,
   isSidebarOpen = true,
   onToggleSidebar,
+  onOpenSettings,
 }) => {
   const [selectedLane, setSelectedLane] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"order_asc" | "order_desc">("order_asc");
   const [isProgressPillHovered, setIsProgressPillHovered] = useState(false);
+
+  // Active LLM provider and model display
+  const [llmInfo, setLlmInfo] = useState<{ provider: string; model: string; icon: string }>({
+    provider: "Pollinations AI",
+    model: "openai/gpt-5.4-nano",
+    icon: "🌸",
+  });
+
+  useEffect(() => {
+    const updateLlmInfo = () => {
+      try {
+        const stored = localStorage.getItem("swarm_external_ai_config");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const pKey = parsed.provider || "pollinations";
+          const icons: Record<string, string> = {
+            pollinations: "🌸",
+            openrouter: "🌐",
+            openai: "⚡",
+            claude: "🧠",
+            gemini: "✨",
+            nvidia: "🚀",
+            ollama: "💻",
+          };
+          const names: Record<string, string> = {
+            pollinations: "Pollinations AI",
+            openrouter: "OpenRouter",
+            openai: "OpenAI",
+            claude: "Claude",
+            gemini: "Gemini",
+            nvidia: "NVIDIA NIM",
+            ollama: "Ollama",
+          };
+          setLlmInfo({
+            provider: names[pKey] || pKey,
+            model: parsed.smartModel || "openai/gpt-5.4-nano",
+            icon: icons[pKey] || "🌸",
+          });
+        }
+      } catch {
+        // fallback
+      }
+    };
+    updateLlmInfo();
+    window.addEventListener("swarm_config_updated", updateLlmInfo);
+    window.addEventListener("storage", updateLlmInfo);
+    return () => {
+      window.removeEventListener("swarm_config_updated", updateLlmInfo);
+      window.removeEventListener("storage", updateLlmInfo);
+    };
+  }, []);
 
   // Local state for manually toggled items if user checks them off in popover
   const [manualChecklistOverrides, setManualChecklistOverrides] = useState<Record<string, "done" | "planned">>({});
@@ -272,10 +325,30 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
             </span>
           </div>
 
+          {/* Active LLM Provider Status Indicator */}
+          <div
+            className="llm-status-pill"
+            onClick={onOpenSettings}
+            title={`Active LLM Engine: ${llmInfo.provider} (${llmInfo.model}). Click to configure.`}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === "Enter" && onOpenSettings?.()}
+          >
+            <span className="llm-dot" />
+            <span className="llm-icon-mini">{llmInfo.icon}</span>
+            <span className="llm-status-text">
+              LLM: <strong>{llmInfo.provider}</strong> • <span className="llm-model-name">{llmInfo.model}</span>
+            </span>
+          </div>
+
           {/* TinyFish Engine Status Indicator */}
           <div
             className="tinyfish-status-pill"
-            title="Autonomous Web Search, Fetch & Real-Browser Verification"
+            onClick={onOpenSettings}
+            title="Autonomous Web Search, Fetch & Real-Browser Verification. Click to configure."
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === "Enter" && onOpenSettings?.()}
           >
             <span className="tinyfish-dot" />
             <Sparkles size={11} className="tinyfish-header-sparkle" />
