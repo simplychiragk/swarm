@@ -318,7 +318,7 @@ class PolicyEngine:
                     self._seen_domains[run_id] = set()
                 self._seen_domains[run_id].add(domain)
 
-        elif tool in ("file_read", "file_write", "tinyfish_search", "tinyfish_fetch", "feed_post", "card_post"):
+        elif tool in ("file_read", "file_write", "file_edit", "list_directory", "search_code", "tinyfish_search", "tinyfish_fetch", "feed_post", "card_post"):
             tier = "LOW"
             reason = f"Standard workspace operation: {tool}"
 

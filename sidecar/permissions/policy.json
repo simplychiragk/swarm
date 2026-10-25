@@ -5,6 +5,9 @@
   "known_tools": [
     "file_read",
     "file_write",
+    "file_edit",
+    "list_directory",
+    "search_code",
     "file_delete",
     "command_run",
     "tinyfish_search",
@@ -85,6 +88,9 @@
       "auto_allow_tools": [
         "file_read",
         "file_write",
+        "file_edit",
+        "list_directory",
+        "search_code",
         "tinyfish_search",
         "tinyfish_fetch",
         "feed_post",
@@ -101,6 +107,9 @@
       "tinyfish_search": 25,
       "tinyfish_fetch": 25,
       "file_write": 50,
+      "file_edit": 50,
+      "list_directory": 50,
+      "search_code": 50,
       "file_read": 100,
       "file_delete": 10,
       "tunnel_deploy": 5,
@@ -108,7 +117,7 @@
       "git_push": 5
     },
     "max_tinyfish_calls": 30,
-    "max_command_runs": 25,
+        "max_command_runs": 25,
     "max_wall_clock_per_command_s": 30,
     "default_approval_timeout_s": 120
   }

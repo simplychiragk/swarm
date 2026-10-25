@@ -5,7 +5,7 @@ safe subprocess execution, path boundary sandboxing, and SQLite audit logging.
 """
 
 from .redaction import redact, redact_data
-from .path_safety import resolve_safe_path, get_run_workspace, PathSafetyError, get_repo_root
+from .path_safety import resolve_safe_path, get_run_workspace, PathSafetyError, get_repo_root, get_project_root, set_project_root, is_project_mode
 from .command_runner import run_safe_command, CommandResult, build_safe_child_env, kill_process_tree
 from .audit import record_permission_event, get_run_permission_events, clear_audit_db
 from .policy import PolicyEngine, Decision
@@ -18,6 +18,9 @@ __all__ = [
     "get_run_workspace",
     "PathSafetyError",
     "get_repo_root",
+    "get_project_root",
+    "set_project_root",
+    "is_project_mode",
     "run_safe_command",
     "CommandResult",
     "build_safe_child_env",

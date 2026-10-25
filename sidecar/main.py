@@ -14,7 +14,6 @@ import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
 
 try:
     from dotenv import load_dotenv
@@ -25,6 +24,8 @@ try:
         load_dotenv()
 except ImportError:
     pass
+
+from typing import Dict, Any, List, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -496,6 +497,150 @@ async def get_run_permissions_endpoint(run_id: str):
     return {"run_id": run_id, "events": events, "count": len(events)}
 
 
+# --- Gap 5: Read-only git inspection for the Approval Gate UI ---
+
+
+@app.get("/runs/{run_id}/git-diff")
+async def get_run_git_diff_endpoint(run_id: str, max_bytes: int = 100_000):
+    """
+    Gap 5: returns the unified git diff of the run's working tree so the user can
+    inspect exactly what lines will change before approving. Read-only.
+    In project mode, the workspace is the user's external --project-dir repo.
+    """
+    from fastapi import HTTPException
+    from sidecar.permissions import get_run_workspace, is_project_mode
+    from sidecar.permissions.command_runner import run_safe_command
+
+    ws = get_run_workspace(run_id, create=True)
+
+    diff_res = await run_safe_command(
+        ["git", "diff", "--no-color", "--", "."], cwd=ws, timeout_s=20.0
+    )
+    stat_res = await run_safe_command(
+        ["git", "diff", "--no-color", "--stat", "--", "."], cwd=ws, timeout_s=20.0
+    )
+    status_res = await run_safe_command(
+        ["git", "status", "--porcelain", "--", "."], cwd=ws, timeout_s=20.0
+    )
+
+    stderr_blob = diff_res.stderr or ""
+    if "not a git repository" in stderr_blob.lower() or "fatal:" in stderr_blob.lower():
+        if not is_project_mode():
+            return {
+                "run_id": run_id,
+                "workspace": ws.as_posix(),
+                "diff": "",
+                "stat": "",
+                "changed_files": 0,
+                "available": False,
+                "note": (
+                    "Run workspace is not a git repository (sandbox mode). "
+                    "Attach Swarm to a real repo with SWARM_PROJECT_ROOT / --project-dir to get live diffs."
+                ),
+            }
+        raise HTTPException(status_code=409, detail=stderr_blob or "git failed")
+
+    diff_text = (diff_res.stdout or "")
+    stat_text = (stat_res.stdout or "")[:4000]
+    changed_files = sum(
+        1 for line in (status_res.stdout or "").splitlines() if line.strip()
+    )
+
+    # git diff never shows untracked (brand-new) files; synthesize new-file blocks
+    # for them from git status so the approval UI previews creations too.
+    untracked_blocks: List[str] = []
+    for line in (status_res.stdout or "").splitlines():
+        if not line.startswith("?? "):
+            continue
+        rel = line[3:].strip().replace("\\", "/")
+        candidate = ws / rel
+        if not candidate.is_file():
+            continue
+        try:
+            body = candidate.read_text(encoding="utf-8", errors="replace")[:20_000]
+        except OSError:
+            continue
+        body_lines = "".join(f"+{ln}\n" for ln in body.splitlines())
+        untracked_blocks.append(
+            f"diff --git a/{rel} b/{rel}\n"
+            "new file mode 100644\n"
+            "--- /dev/null\n"
+            f"+++ b/{rel}\n"
+            f"@@ -0,0 +1,{len(body.splitlines())} @@\n"
+            + body_lines
+        )
+        changed_files += 1
+
+    if untracked_blocks:
+        diff_text = diff_text + "\n" + "\n".join(untracked_blocks)
+
+    diff_text = diff_text[:max_bytes]
+
+    if not diff_text and changed_files == 0:
+        return {
+            "run_id": run_id,
+            "workspace": ws.as_posix(),
+            "diff": "",
+            "stat": "",
+            "changed_files": 0,
+            "available": False,
+            "note": "No pending working-tree git changes in the run workspace.",
+        }
+
+    return {
+        "run_id": run_id,
+        "workspace": ws.as_posix(),
+        "diff": diff_text,
+        "stat": stat_text[:4000],
+        "changed_files": changed_files,
+        "truncated": diff_text.endswith("[TRUNCATED]"),
+        "available": True,
+    }
+
+
+class GitRevertRequest(BaseModel):
+    note: Optional[str] = None
+
+
+@app.post("/runs/{run_id}/git-revert")
+async def revert_run_git_changes_endpoint(run_id: str, payload: Optional[GitRevertRequest] = None):
+    """
+    Gap 5 ('Reject & Revert'): stashes only the working-tree changes of this run's
+    workspace path back into git history. Uses `git stash push --include-untracked`
+    scoped to the workspace so the revert stays recoverable via `git stash apply`.
+    """
+    from fastapi import HTTPException
+    from sidecar.permissions import get_run_workspace, is_project_mode
+    from sidecar.permissions.command_runner import run_safe_command
+
+    ws = get_run_workspace(run_id, create=True)
+    if not is_project_mode():
+        return {
+            "reverted": False,
+            "run_id": run_id,
+            "note": "Sandbox run workspace is not git tracked; nothing to revert.",
+        }
+
+    stash_msg = f"Swarm revert for run {run_id}"
+    if payload and payload.note:
+        stash_msg += f": {payload.note[:120]}"
+
+    rev_res = await run_safe_command(
+        ["git", "stash", "push", "--include-untracked", "-m", stash_msg, "--", "."],
+        cwd=ws,
+        timeout_s=30.0,
+    )
+    if rev_res.exit_code != 0:
+        raise HTTPException(status_code=409, detail=rev_res.stderr or "git stash failed")
+
+    return {
+        "reverted": True,
+        "run_id": run_id,
+        "output": (rev_res.stdout or rev_res.stderr or "")[:1000],
+        "note": f"Changes stashed and recoverable via: git stash apply in {ws}",
+    }
+
+
 @app.get("/runs/{run_id}/artifacts/{artifact_path:path}")
 async def get_run_artifact_endpoint(run_id: str, artifact_path: str):
     """
@@ -833,6 +978,27 @@ async def create_workspace_item_endpoint(payload: CreateItemPayload, run_id: str
 
 
 if __name__ == "__main__":
+    import argparse
     import uvicorn
-    port = int(os.environ.get("SWARM_SIDECAR_PORT", 8000))
+
+    parser = argparse.ArgumentParser(description="Swarm FastAPI Sidecar")
+    parser.add_argument(
+        "--project-dir",
+        default=None,
+        help=(
+            "Gap 1: run the swarm against an existing repository on this machine "
+            "instead of the sandboxed workspace/<run_id>/ folder. "
+            "Equivalent to setting SWARM_PROJECT_ROOT."
+        ),
+    )
+    parser.add_argument("--port", type=int, default=None, help="Sidecar HTTP port")
+    args, _unknown = parser.parse_known_args()
+
+    if args.project_dir:
+        os.environ["SWARM_PROJECT_ROOT"] = str(Path(args.project_dir).expanduser().resolve())
+    if args.port:
+        port = args.port
+    else:
+        port = int(os.environ.get("SWARM_SIDECAR_PORT", 8000))
+
     uvicorn.run("sidecar.main:app", host="127.0.0.1", port=port, reload=True)

@@ -12,13 +12,48 @@ import {
   Terminal,
   CheckCircle2,
   Check,
+  FileDiff,
+  GitCommitVertical,
 } from "lucide-react";
+
+const API_BASE = "http://127.0.0.1:8000";
+
+interface DiffFileChunk {
+  file: string;
+  lines: { type: " " | "+" | "-" | "@"; text: string }[];
+}
+
+const parseUnifiedDiff = (diffText: string): DiffFileChunk[] => {
+  const chunks: DiffFileChunk[] = [];
+  let current: DiffFileChunk | null = null;
+  for (const line of diffText.split("\n")) {
+    if (line.startsWith("+++ ")) {
+      // Push previous chunk and start a new one for the destination file
+      if (current && current.lines.length > 0) chunks.push(current);
+      const file: string = line.startsWith("+++ b/") ? line.slice(6) : line.replace("+++ ", "");
+      current = { file, lines: [] };
+      continue;
+    }
+    const chunk: DiffFileChunk | null = current;
+    if (!chunk) continue;
+    if (line.startsWith("--- ") || line.startsWith("diff --git") || line.startsWith("index ")) {
+      continue; // skip noisy headers
+    }
+    if (line.startsWith("+")) chunk.lines.push({ type: "+", text: line.slice(1) });
+    else if (line.startsWith("-")) chunk.lines.push({ type: "-", text: line.slice(1) });
+    else if (line.startsWith("@@")) chunk.lines.push({ type: "@", text: line });
+    else chunk.lines.push({ type: " ", text: line.slice(1) });
+  }
+  if (current && current.lines.length > 0) chunks.push(current);
+  return chunks;
+};
 
 interface ApprovalModalProps {
   approval: ApprovalRequest | null;
   onDecision: (decision: "approve" | "redirect", note?: string, scope?: "once" | "run") => void;
   onClose?: () => void;
   cards?: WhiteboardCard[];
+  runId?: string;
 }
 
 export const ApprovalModal: React.FC<ApprovalModalProps> = ({
@@ -26,18 +61,43 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
   onDecision,
   onClose,
   cards,
+  runId = "run-default",
 }) => {
   const [redirectNote, setRedirectNote] = useState("");
   const [showNoteField, setShowNoteField] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scope, setScope] = useState<"once" | "run">("once");
+  // Gap 5: live git diff of the pending working-tree changes
+  const [diffChunks, setDiffChunks] = useState<DiffFileChunk[] | null>(null);
+  const [diffStat, setDiffStat] = useState("");
+  const [diffAvailable, setDiffAvailable] = useState<boolean | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
 
   useEffect(() => {
     setIsSubmitting(false);
     setShowNoteField(false);
     setRedirectNote("");
     setScope("once");
-  }, [approval?.id]);
+    // Fetch the live diff each time a new approval opens
+    setDiffLoading(true);
+    fetch(`${API_BASE}/runs/${runId}/git-diff`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`diff ${r.status}`))))
+      .then((data) => {
+        if (data && data.available && typeof data.diff === "string") {
+          setDiffChunks(parseUnifiedDiff(data.diff));
+          setDiffStat(data.stat || "");
+          setDiffAvailable(true);
+        } else {
+          setDiffChunks(null);
+          setDiffAvailable(false);
+        }
+      })
+      .catch(() => {
+        setDiffChunks(null);
+        setDiffAvailable(false);
+      })
+      .finally(() => setDiffLoading(false));
+  }, [approval?.id, runId]);
 
   // Handle Esc key
   useEffect(() => {
@@ -55,7 +115,7 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
   const handleApprove = () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    onDecision("approve", "Approved by user", scope);
+    onDecision("approve", "Approved & applied by user", scope);
   };
 
   const handleRedirect = () => {
@@ -65,6 +125,17 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
     }
     if (isSubmitting) return;
     setIsSubmitting(true);
+    // Gap 5 'Reject & Revert': when the diff was rejected, stash the working-tree
+    // changes of the run workspace (recoverable via git stash apply) before reporting back.
+    if (diffAvailable) {
+      fetch(`${API_BASE}/runs/${runId}/git-revert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: redirectNote.trim() || undefined }),
+      }).catch((e: Error) => console.error("Git revert failed:", e));
+      onDecision("redirect", redirectNote.trim() || "Rejected diff; workspace reverted");
+      return;
+    }
     onDecision("redirect", redirectNote.trim() || "Revision requested by user");
   };
 
@@ -267,6 +338,93 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
             </div>
           )}
 
+          {/* Gap 5: Live Git Diff Preview (Approve & Apply / Reject & Revert) */}
+          {diffLoading && (
+            <div className="approval-card-preview" style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px", color: "#52525b", fontSize: "12px" }}>
+              <Loader2 size={14} className="animate-spin" />
+              <span>Loading live git diff of pending changes…</span>
+            </div>
+          )}
+          {!diffLoading && diffAvailable && diffChunks && diffChunks.length > 0 && (
+            <div className="approval-card-preview git-diff-preview" style={{ marginTop: "12px", borderLeft: "3px solid #38bdf8" }}>
+              <div className="card-preview-header">
+                <span className="card-preview-label" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <FileDiff size={12} /> Live Working-Tree Diff
+                </span>
+                <span className="card-preview-status">
+                  {diffChunks.length} file{diffChunks.length === 1 ? "" : "s"} changed
+                </span>
+              </div>
+              {diffStat && (
+                <pre style={{
+                  fontSize: "11px",
+                  color: "#71717a",
+                  margin: "4px 0",
+                  whiteSpace: "pre-wrap",
+                }}>{diffStat.trim()}</pre>
+              )}
+              <div style={{
+                maxHeight: "260px",
+                overflow: "auto",
+                background: "#0c0d0e",
+                border: "1px solid #27282b",
+                borderRadius: "6px",
+                padding: "8px 0",
+                marginTop: "4px",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                fontSize: "11px",
+                lineHeight: "16px",
+              }}>
+                {diffChunks.map((chunk) => (
+                  <div key={chunk.file}>
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "4px 10px",
+                      background: "#16181a",
+                      borderBottom: "1px solid #27282b",
+                      color: "#e4e4e7",
+                      fontWeight: 600,
+                      position: "sticky",
+                      top: 0,
+                    }}>
+                      <GitCommitVertical size={12} color="#38bdf8" />
+                      {chunk.file}
+                    </div>
+                    {chunk.lines.map((ln, i) => {
+                      const isAdd = ln.type === "+";
+                      const isDel = ln.type === "-";
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            display: "flex",
+                            gap: "8px",
+                            padding: "0 10px",
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-all",
+                            background: isAdd ? "#073019" : isDel ? "#3b0f12" : "transparent",
+                            color: isAdd ? "#4ade80" : isDel ? "#f87171" : ln.type === "@" ? "#fbbf24" : "#a1a1aa",
+                          }}
+                        >
+                          <span style={{ color: "#52525b", userSelect: "none" }}>{ln.type === " " ? " " : ln.type}</span>
+                          <span>{ln.text}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {!diffLoading && diffAvailable === false && (
+            <div style={{ marginTop: "12px", fontSize: "11px", color: "#71717a", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Terminal size={12} />
+              No git diff available for this run (sandbox workspace is not a git repo — attach SWARM_PROJECT_ROOT for live diffs).
+            </div>
+          )}
+
           {/* Associated Card Details */}
           {approval.card && (
             <div className="approval-card-preview">
@@ -341,6 +499,10 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
             <span>
               {isSubmitting
                 ? "Authorizing..."
+                : diffAvailable && diffChunks && diffChunks.length > 0
+                ? scope === "run"
+                ? "Approve & Apply for Entire Run"
+                : "Approve & Apply"
                 : scope === "run"
                 ? "Approve for Entire Run"
                 : "Approve Deployment"}
@@ -356,12 +518,12 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
             {showNoteField ? (
               <>
                 <CornerDownLeft size={16} />
-                <span>Submit Revision</span>
+                <span>{diffAvailable ? "Reject & Revert" : "Submit Revision"}</span>
               </>
             ) : (
               <>
                 <ArrowRight size={16} />
-                <span>Request Revision</span>
+                <span>{diffAvailable ? "Reject & Revert" : "Request Revision"}</span>
               </>
             )}
           </button>
