@@ -115,6 +115,36 @@ async def _call_provider_http(
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
+    if provider.name == "pollinations":
+        api_key = provider.get_api_key()
+        if api_key:
+            try:
+                resp = await client.post(url, json=payload, headers=headers, timeout=timeout)
+                if resp.status_code == 200:
+                    result = resp.json()
+                    choices = result.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
+                        if content and content.strip():
+                            return content.strip()
+            except Exception as e:
+                logger.info(f"Pollinations gen endpoint fallback: {e}")
+
+        # Fallback to keyless text.pollinations.ai endpoint
+        text_url = "https://text.pollinations.ai/"
+        text_payload: Dict[str, Any] = {
+            "messages": messages,
+            "model": "openai-fast" if tier == "fast" else "openai",
+        }
+        if json_mode:
+            text_payload["jsonMode"] = True
+        resp = await client.post(text_url, json=text_payload, headers={"Content-Type": "application/json"}, timeout=timeout)
+        resp.raise_for_status()
+        content = resp.text.strip()
+        if content:
+            return content
+        raise ValueError("Pollinations returned empty content")
+
     resp = await client.post(url, json=payload, headers=headers, timeout=timeout)
 
     if resp.status_code == 429:

@@ -819,6 +819,107 @@ body {
   word-break: break-word;
 }
 
+/* -------------------------------------------------------------
+   INTERACTIVE MCQ OPTIONS IN NECTAR FEED
+   ------------------------------------------------------------- */
+.mcq-options-container {
+  margin: 8px 0 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mcq-prompt-hint {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #8A6D3B;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mcq-options-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mcq-option-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background-color: #FFFFFF;
+  border: 1.5px solid #E2D3B8;
+  color: var(--color-text-main);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 1px 1px 0px rgba(44, 38, 30, 0.12);
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.mcq-option-chip:hover {
+  background-color: #FFF9EB;
+  border-color: #D48806;
+  transform: translateY(-1px);
+  box-shadow: 1.5px 1.5px 0px rgba(44, 38, 30, 0.22);
+}
+
+.mcq-option-chip:active {
+  transform: translateY(0px);
+  box-shadow: 0.5px 0.5px 0px rgba(44, 38, 30, 0.15);
+}
+
+.mcq-letter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 4px;
+  background-color: #F3E7CA;
+  border: 1px solid #D2BA85;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #734800;
+  flex-shrink: 0;
+  transition: all 0.12s ease;
+}
+
+.mcq-option-chip:hover .mcq-letter-badge {
+  background-color: #E5A12D;
+  color: #FFFFFF;
+  border-color: #B57712;
+}
+
+.mcq-option-text {
+  flex: 1;
+  line-height: 1.35;
+}
+
+.mcq-custom-chip {
+  border-style: dashed;
+  background-color: rgba(255, 255, 255, 0.5);
+  color: var(--color-text-muted);
+}
+
+.mcq-custom-chip:hover {
+  background-color: #F8F5EE;
+  border-color: #A08C68;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mcq-option-chip {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
 .feed-bubble-time {
   font-size: 9px;
   color: var(--color-text-dim);

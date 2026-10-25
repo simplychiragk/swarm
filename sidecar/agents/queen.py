@@ -8,7 +8,7 @@ import time
 import uuid
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Set
 from pydantic import BaseModel, Field
 
 from sidecar.models.contracts import (
@@ -35,6 +35,7 @@ logger = logging.getLogger("swarm.agents.queen")
 class InterviewEvaluation(BaseModel):
     is_finished: bool = Field(..., description="Whether sufficient requirements are gathered")
     question: str = Field(..., description="Follow-up question if not finished")
+    options: List[str] = Field(default_factory=list, description="3-4 distinct multiple-choice options for the user to answer directly")
     summary: str = Field(..., description="Summary of confirmed specifications")
 
 
@@ -53,14 +54,19 @@ class PlanStructure(BaseModel):
 class QueenAgent(BaseAgent):
     """Orchestrator queen agent conducting interview and decomposing project goals."""
 
-    def __init__(self, bus: MessageBus, decision_layer: Optional[RuleBasedDecisionLayer] = None):
+    def __init__(
+        self,
+        bus: MessageBus,
+        decision_layer: Optional[RuleBasedDecisionLayer] = None,
+        max_messages: int = 200,
+    ):
         super().__init__(
             name="queen",
             sender=AgentSender.QUEEN,
             lane=Lane.NONE,
             role_prompt="You are the Queen bee of Swarm. You interview users, plan multi-agent tasks, and monitor progress.",
             bus=bus,
-            max_messages=20,
+            max_messages=max_messages,
         )
         self.decision_layer = decision_layer or RuleBasedDecisionLayer()
         self.question_count = 0
@@ -73,6 +79,7 @@ class QueenAgent(BaseAgent):
         self.worker_messages: Dict[str, List[str]] = {}
         self.pending_steers: List[UserMessage] = []
         self.is_interrupted: bool = False
+        self.is_completed: bool = False
         self.current_spec: Optional[ProjectSpec] = None
 
     def get_current_spec(self) -> ProjectSpec:
@@ -87,10 +94,14 @@ class QueenAgent(BaseAgent):
         history = self.worker_messages.setdefault(worker_name, [])
         history.append(message_content)
 
-    async def check_stuck_workers(self, timeout_seconds: float = 25.0) -> None:
+    async def check_stuck_workers(self, timeout_seconds: float = 25.0, active_workers: Optional[Set[str]] = None) -> None:
         """Nudge or flag workers that have stalled or repeat identical outputs."""
+        if self.is_completed:
+            return
         now = time.time()
         for worker_name, last_time in list(self.worker_activity.items()):
+            if active_workers is not None and worker_name not in active_workers and worker_name.lower() not in active_workers:
+                continue
             if now - last_time > timeout_seconds:
                 logger.warning(f"Worker '{worker_name}' has been silent for >{timeout_seconds}s. Nudging.")
                 await self.emit_feed_message(
@@ -98,6 +109,28 @@ class QueenAgent(BaseAgent):
                     content=f"Queen: Worker '{worker_name}', status check requested. Please report current progress.",
                 )
                 self.worker_activity[worker_name] = now  # Reset nudge timer
+
+    def _get_contextual_options(self, step: int, question: str) -> List[str]:
+        """Provides default high-quality multiple choice options if LLM didn't return an options list."""
+        q_lower = question.lower()
+        if "audience" in q_lower or step == 1:
+            return [
+                "College Students & Campus Builders",
+                "Early-stage Founders & Tech Leaders",
+                "Developers, Hackers & Open Source Community",
+            ]
+        elif "theme" in q_lower or "design" in q_lower or "aesthetic" in q_lower or step == 2:
+            return [
+                "Dark Honeycomb & Cyberpunk Amber",
+                "Clean Minimalist Modern Light",
+                "High-Contrast Glassmorphism & Neon",
+            ]
+        else:
+            return [
+                "RSVP Registration Form + Countdown Timer",
+                "Event Agenda, Speakers Grid & Live Map",
+                "Waitlist Sign-up with Community Social Links",
+            ]
 
     async def handle_user_input(self, user_text: str) -> None:
         """Processes user input during discovery interview or steering."""
@@ -115,7 +148,15 @@ class QueenAgent(BaseAgent):
             else:
                 eval_res = await complete(
                     messages=[
-                        {"role": "system", "content": f"{self.role_prompt}\nEvaluate if we have enough details (audience, theme, fields). Max 3 questions."},
+                        {
+                            "role": "system",
+                            "content": (
+                                f"{self.role_prompt}\n"
+                                "Evaluate if we have enough details (audience, theme, fields). Max 3 questions. "
+                                "When asking a question, ALWAYS provide 3 to 4 distinct, concise multiple-choice options "
+                                "in the 'options' field so the user can choose directly or type their own."
+                            ),
+                        },
                         *self.dialogue_history,
                     ],
                     tier="fast",
@@ -125,10 +166,16 @@ class QueenAgent(BaseAgent):
                 if parsed and parsed.is_finished:
                     self.interview_done = True
                 elif parsed and parsed.question:
+                    options = (
+                        parsed.options
+                        if (parsed and parsed.options and len(parsed.options) >= 2)
+                        else self._get_contextual_options(self.question_count, parsed.question)
+                    )
                     self.dialogue_history.append({"role": "assistant", "content": parsed.question})
                     await self.emit_feed_message(
                         msg_type=MessageType.CHAT,
                         content=f"Queen: {parsed.question}",
+                        metadata={"options": options},
                     )
                     await self.emit_card_upsert(
                         card_id="card-discovery",

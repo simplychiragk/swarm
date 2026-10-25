@@ -8,6 +8,7 @@ import json
 import logging
 from typing import List, Dict, Any, Optional
 from fastapi import WebSocket
+from starlette.websockets import WebSocketDisconnect
 
 logger = logging.getLogger("swarm.broadcaster")
 
@@ -84,8 +85,12 @@ class Broadcaster:
                     for event in self.history:
                         await websocket.send_text(json.dumps(event))
 
+        except (WebSocketDisconnect, RuntimeError):
+            # Client disconnected during initial catch-up streaming (e.g. browser refresh / Vite reload)
+            self.disconnect(websocket)
+            return
         except Exception as e:
-            logger.warning(f"Error catching up client from storage: {e}", exc_info=True)
+            logger.warning(f"Error catching up client from storage: {e}")
             # Safe fallback to in-memory history
             for event in self.history:
                 try:

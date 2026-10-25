@@ -28,7 +28,9 @@ class ProviderConfig:
     extra_headers: Dict[str, str] = field(default_factory=dict)
 
     def is_configured(self) -> bool:
-        """Returns True if the required API key environment variable is populated."""
+        """Returns True if the required API key environment variable is populated or provider supports keyless public mode."""
+        if self.name == "pollinations":
+            return True
         return bool(os.environ.get(self.api_key_env, "").strip())
 
     def get_api_key(self) -> Optional[str]:
