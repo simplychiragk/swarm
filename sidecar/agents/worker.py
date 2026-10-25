@@ -7,7 +7,7 @@ and supports seeded-bug demo mode and automated fix loops.
 
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Set
 from pydantic import BaseModel, Field
 
 from sidecar.models.contracts import (
@@ -50,6 +50,8 @@ class WorkerAgent(BaseAgent):
         )
         self.received_peer_contract: Optional[str] = None
         self.active_task_id: Optional[str] = None
+        self.completed_tasks: Set[str] = set()
+        self._broadcasted_contracts: Set[str] = set()
         self.seeded_bug_active = (os.environ.get("SWARM_DEMO_MODE", "").lower() == "seeded_bug")
         self.bug_fixed = False
         self.has_phone_field = False
@@ -432,78 +434,91 @@ async def handle_submission(req: Dict[str, Any]):
         spec: Optional[ProjectSpec] = None,
     ) -> None:
         """Executes a delegated task with LLM completion and writes real files."""
+        if task_id in self.completed_tasks or self.active_task_id == task_id:
+            logger.info(f"Worker '{self.name}' skipping task '{task_id}' (already completed or active).")
+            return
+
         self.active_task_id = task_id
-        if spec:
-            self.current_spec = spec
-        logger.info(f"Worker '{self.name}' starting task '{title}' [{self.lane.value}] for run '{run_id}'")
+        try:
+            if spec:
+                self.current_spec = spec
+            logger.info(f"Worker '{self.name}' starting task '{title}' [{self.lane.value}] for run '{run_id}'")
 
-        await self.emit_card_upsert(
-            card_id=task_id,
-            title=title,
-            summary=f"Worker actively executing: {description}",
-            status=CardStatus.IN_PROGRESS,
-            lane=self.lane,
-        )
+            await self.emit_card_upsert(
+                card_id=task_id,
+                title=title,
+                summary=f"Worker actively executing: {description}",
+                status=CardStatus.IN_PROGRESS,
+                lane=self.lane,
+            )
 
-        prompt = f"Task: {title}\nDescription: {description}"
-        if self.received_peer_contract:
-            prompt += f"\nPeer contract provided: {self.received_peer_contract}"
+            prompt = f"Task: {title}\nDescription: {description}"
+            if self.received_peer_contract:
+                prompt += f"\nPeer contract provided: {self.received_peer_contract}"
 
-        res = await complete(
-            messages=[
-                {"role": "system", "content": self.role_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            tier="fast",
-            json_schema=DeliverableSchema,
-        )
-        deliverable: DeliverableSchema = res.parsed  # type: ignore
+            res = await complete(
+                messages=[
+                    {"role": "system", "content": self.role_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                tier="fast",
+                json_schema=DeliverableSchema,
+            )
+            deliverable: DeliverableSchema = res.parsed  # type: ignore
 
-        await self.emit_feed_message(
-            msg_type=MessageType.CHAT,
-            content=f"{self.name.upper()}: {deliverable.message if deliverable else res.text}",
-            channel="build",
-            metadata={"spec": deliverable.technical_spec if deliverable else ""},
-        )
-
-        # Write real files into workspace/<run_id>/
-        if self.lane == Lane.BE:
-            endpoint = self.current_spec.api_endpoint if self.current_spec else "/api/waitlist"
-            contract_snippet = f"POST {endpoint} -> Request: dynamic JSON schema -> Response: 201 Created {{status, message, data}}"
             await self.emit_feed_message(
                 msg_type=MessageType.CHAT,
-                content=f"BE Worker -> FE Worker: Locked API endpoint contract: `{contract_snippet}`",
+                content=f"{self.name.upper()}: {deliverable.message if deliverable else res.text}",
                 channel="build",
-                intent="decision",
-                metadata={"contract": contract_snippet, "topic": "API Contract", "agreed_by": ["be_worker", "fe_worker"]},
-                lane=Lane.FE,
+                metadata={"spec": deliverable.technical_spec if deliverable else ""},
             )
-            await self._write_backend_project(run_id=run_id, spec=self.current_spec)
 
-        if self.lane == Lane.FE:
-            has_bug = self.seeded_bug_active and not self.bug_fixed
-            await self._write_frontend_project(run_id=run_id, spec=self.current_spec, with_bug=has_bug)
-            if has_bug:
-                logger.info(f"Seeded bug introduced into workspace '{run_id}' by FE Worker (button disabled).")
+            # Write real files into workspace/<run_id>/
+            if self.lane == Lane.BE:
+                endpoint = self.current_spec.api_endpoint if self.current_spec else "/api/waitlist"
+                contract_snippet = f"POST {endpoint} -> Request: dynamic JSON schema -> Response: 201 Created {{status, message, data}}"
+                if contract_snippet not in self._broadcasted_contracts:
+                    self._broadcasted_contracts.add(contract_snippet)
+                    await self.emit_feed_message(
+                        msg_type=MessageType.CHAT,
+                        content=f"BE Worker -> FE Worker: Locked API endpoint contract: `{contract_snippet}`",
+                        channel="build",
+                        intent="decision",
+                        metadata={"contract": contract_snippet, "topic": "API Contract", "agreed_by": ["be_worker", "fe_worker"]},
+                        lane=Lane.FE,
+                    )
+                await self._write_backend_project(run_id=run_id, spec=self.current_spec)
 
-        await self.emit_card_upsert(
-            card_id=task_id,
-            title=title,
-            summary=f"Completed by {self.name.upper()}: {description}",
-            status=CardStatus.DONE,
-            lane=self.lane,
-        )
+            if self.lane == Lane.FE:
+                has_bug = self.seeded_bug_active and not self.bug_fixed
+                await self._write_frontend_project(run_id=run_id, spec=self.current_spec, with_bug=has_bug)
+                if has_bug:
+                    logger.info(f"Seeded bug introduced into workspace '{run_id}' by FE Worker (button disabled).")
 
-        await self.emit_feed_message(
-            msg_type=MessageType.STATUS,
-            content=f"{self.name.upper()}: Task '{title}' completed successfully.",
-            channel="build",
-        )
+            await self.emit_card_upsert(
+                card_id=task_id,
+                title=title,
+                summary=f"Completed by {self.name.upper()}: {description}",
+                status=CardStatus.DONE,
+                lane=self.lane,
+            )
+
+            await self.emit_feed_message(
+                msg_type=MessageType.STATUS,
+                content=f"{self.name.upper()}: Task '{title}' completed successfully.",
+                channel="build",
+            )
+            self.completed_tasks.add(task_id)
+        finally:
+            self.active_task_id = None
 
     async def process_message(self, message: FeedMessage) -> None:
         """Handle peer messages and incoming task assignments."""
         if message.sender == AgentSender.WORKER and message.lane == self.lane and "contract" in (message.metadata or {}):
-            self.received_peer_contract = str(message.metadata.get("contract"))
+            contract_str = str(message.metadata.get("contract"))
+            if self.received_peer_contract == contract_str:
+                return
+            self.received_peer_contract = contract_str
             logger.info(f"Worker '{self.name}' received peer contract: {self.received_peer_contract}")
             await self.emit_feed_message(
                 msg_type=MessageType.CHAT,

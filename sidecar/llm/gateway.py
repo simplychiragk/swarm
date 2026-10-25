@@ -116,17 +116,19 @@ async def _call_provider_http(
         payload["response_format"] = {"type": "json_object"}
 
     if provider.name == "pollinations":
-        try:
-            resp = await client.post(url, json=payload, headers=headers, timeout=timeout)
-            if resp.status_code == 200:
-                result = resp.json()
-                choices = result.get("choices", [])
-                if choices:
-                    content = choices[0].get("message", {}).get("content", "")
-                    if content and content.strip():
-                        return content.strip()
-        except Exception as e:
-            logger.info(f"Pollinations gen endpoint fallback: {e}")
+        api_key = provider.get_api_key()
+        if api_key:
+            try:
+                resp = await client.post(url, json=payload, headers=headers, timeout=timeout)
+                if resp.status_code == 200:
+                    result = resp.json()
+                    choices = result.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
+                        if content and content.strip():
+                            return content.strip()
+            except Exception as e:
+                logger.info(f"Pollinations gen endpoint fallback: {e}")
 
         # Fallback to keyless text.pollinations.ai endpoint
         text_url = "https://text.pollinations.ai/"

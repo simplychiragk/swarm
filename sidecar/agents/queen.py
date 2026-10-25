@@ -8,7 +8,7 @@ import time
 import uuid
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Set
 from pydantic import BaseModel, Field
 
 from sidecar.models.contracts import (
@@ -79,6 +79,7 @@ class QueenAgent(BaseAgent):
         self.worker_messages: Dict[str, List[str]] = {}
         self.pending_steers: List[UserMessage] = []
         self.is_interrupted: bool = False
+        self.is_completed: bool = False
         self.current_spec: Optional[ProjectSpec] = None
 
     def get_current_spec(self) -> ProjectSpec:
@@ -93,10 +94,14 @@ class QueenAgent(BaseAgent):
         history = self.worker_messages.setdefault(worker_name, [])
         history.append(message_content)
 
-    async def check_stuck_workers(self, timeout_seconds: float = 25.0) -> None:
+    async def check_stuck_workers(self, timeout_seconds: float = 25.0, active_workers: Optional[Set[str]] = None) -> None:
         """Nudge or flag workers that have stalled or repeat identical outputs."""
+        if self.is_completed:
+            return
         now = time.time()
         for worker_name, last_time in list(self.worker_activity.items()):
+            if active_workers is not None and worker_name not in active_workers and worker_name.lower() not in active_workers:
+                continue
             if now - last_time > timeout_seconds:
                 logger.warning(f"Worker '{worker_name}' has been silent for >{timeout_seconds}s. Nudging.")
                 await self.emit_feed_message(

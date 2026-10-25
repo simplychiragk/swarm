@@ -7,7 +7,7 @@ import os
 import uuid
 import asyncio
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Set
 from sidecar.models.contracts import (
     AgentSender,
     Lane,
@@ -71,7 +71,9 @@ class SwarmRunManager(RunManager):
         self._watchdog_task: Optional[asyncio.Task] = None
         self._orchestrator_task: Optional[asyncio.Task] = None
         self.is_running = False
+        self.is_completed = False
         self.approval_pending = False
+        self._router_subscribed = False
 
     def _init_agents(self) -> None:
         """Initializes agents with the shared message bus."""
@@ -104,15 +106,25 @@ class SwarmRunManager(RunManager):
                 if d.get("action") != "drop":
                     await self.scribe.receive(msg)
 
-        self.bus.subscribe(message_router)
+        if not self._router_subscribed:
+            self.bus.subscribe(message_router)
+            self._router_subscribed = True
 
     async def _watchdog_loop(self) -> None:
         """Periodic health check ensuring workers do not remain stalled."""
         try:
-            while self.is_running:
+            while self.is_running and not self.is_completed:
                 await asyncio.sleep(10.0)
+                if self.is_completed or self.approval_pending:
+                    continue
                 if self.queen:
-                    await self.queen.check_stuck_workers(timeout_seconds=20.0)
+                    active: Set[str] = set()
+                    if self.be_worker and self.be_worker.active_task_id:
+                        active.update(["BE", "be_worker"])
+                    if self.fe_worker and self.fe_worker.active_task_id:
+                        active.update(["FE", "fe_worker"])
+                    if active:
+                        await self.queen.check_stuck_workers(timeout_seconds=20.0, active_workers=active)
         except asyncio.CancelledError:
             pass
 
@@ -341,6 +353,7 @@ class SwarmRunManager(RunManager):
     async def start_run(self, user_text: str) -> None:
         """Starts a live multi-agent execution run."""
         self.is_running = True
+        self.is_completed = False
         self._init_agents()
 
         # Start all agent loops
@@ -419,6 +432,12 @@ class SwarmRunManager(RunManager):
         approval_coordinator.resolve(response.approval_id, response)
 
         self.approval_pending = False
+        self.is_completed = True
+        if self.queen:
+            self.queen.is_completed = True
+        if self._watchdog_task and not self._watchdog_task.done():
+            self._watchdog_task.cancel()
+
         new_status = CardStatus.DONE if response.decision == "approve" else CardStatus.FAILED
 
         summary = (
@@ -453,6 +472,9 @@ class SwarmRunManager(RunManager):
     async def stop(self) -> None:
         """Stops all active agent loops and tasks."""
         self.is_running = False
+        self.is_completed = True
+        if self.queen:
+            self.queen.is_completed = True
         if self._watchdog_task and not self._watchdog_task.done():
             self._watchdog_task.cancel()
         if self._orchestrator_task and not self._orchestrator_task.done():
