@@ -34,7 +34,7 @@ class DeliverableSchema(BaseModel):
 class WorkerAgent(BaseAgent):
     """Lane worker agent (Frontend or Backend)."""
 
-    def __init__(self, name: str, lane: Lane, bus: MessageBus):
+    def __init__(self, name: str, lane: Lane, bus: MessageBus, max_messages: int = 200):
         role = (
             "You are a specialized Backend Engineer worker bee. You construct FastAPI endpoints, validators, and database schemas."
             if lane == Lane.BE
@@ -46,7 +46,7 @@ class WorkerAgent(BaseAgent):
             lane=lane,
             role_prompt=role,
             bus=bus,
-            max_messages=25,
+            max_messages=max_messages,
         )
         self.received_peer_contract: Optional[str] = None
         self.active_task_id: Optional[str] = None

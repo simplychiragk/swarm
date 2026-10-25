@@ -34,14 +34,20 @@ class HoneyCardUpdate(BaseModel):
 class ScribeAgent(BaseAgent):
     """Scribe agent synthesizing live agent conversation into whiteboard cards."""
 
-    def __init__(self, bus: MessageBus, decision_layer: Optional[RuleBasedDecisionLayer] = None, batch_interval: float = 2.5):
+    def __init__(
+        self,
+        bus: MessageBus,
+        decision_layer: Optional[RuleBasedDecisionLayer] = None,
+        batch_interval: float = 2.5,
+        max_messages: int = 200,
+    ):
         super().__init__(
             name="scribe",
             sender=AgentSender.SCRIBE,
             lane=Lane.NONE,
             role_prompt="You are the Scribe of Swarm. You convert raw developer chatter into clean plain-language summary cards for stakeholders.",
             bus=bus,
-            max_messages=30,
+            max_messages=max_messages,
         )
         self.decision_layer = decision_layer or RuleBasedDecisionLayer()
         self.batch_interval = batch_interval

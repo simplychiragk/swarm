@@ -53,14 +53,19 @@ class PlanStructure(BaseModel):
 class QueenAgent(BaseAgent):
     """Orchestrator queen agent conducting interview and decomposing project goals."""
 
-    def __init__(self, bus: MessageBus, decision_layer: Optional[RuleBasedDecisionLayer] = None):
+    def __init__(
+        self,
+        bus: MessageBus,
+        decision_layer: Optional[RuleBasedDecisionLayer] = None,
+        max_messages: int = 200,
+    ):
         super().__init__(
             name="queen",
             sender=AgentSender.QUEEN,
             lane=Lane.NONE,
             role_prompt="You are the Queen bee of Swarm. You interview users, plan multi-agent tasks, and monitor progress.",
             bus=bus,
-            max_messages=20,
+            max_messages=max_messages,
         )
         self.decision_layer = decision_layer or RuleBasedDecisionLayer()
         self.question_count = 0

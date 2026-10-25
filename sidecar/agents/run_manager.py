@@ -48,9 +48,9 @@ class SwarmRunManager(RunManager):
 
     def __init__(
         self,
-        max_llm_calls: int = 40,
-        max_messages_per_agent: int = 25,
-        global_timeout_seconds: float = 120.0,
+        max_llm_calls: int = 100,
+        max_messages_per_agent: int = 200,
+        global_timeout_seconds: float = 300.0,
     ):
         self.max_llm_calls = max_llm_calls
         self.max_messages_per_agent = max_messages_per_agent
@@ -75,10 +75,10 @@ class SwarmRunManager(RunManager):
 
     def _init_agents(self) -> None:
         """Initializes agents with the shared message bus."""
-        self.queen = QueenAgent(self.bus, self.decision_layer)
-        self.be_worker = WorkerAgent("be_worker", Lane.BE, self.bus)
-        self.fe_worker = WorkerAgent("fe_worker", Lane.FE, self.bus)
-        self.scribe = ScribeAgent(self.bus, self.decision_layer, batch_interval=2.0)
+        self.queen = QueenAgent(self.bus, self.decision_layer, max_messages=self.max_messages_per_agent)
+        self.be_worker = WorkerAgent("be_worker", Lane.BE, self.bus, max_messages=self.max_messages_per_agent)
+        self.fe_worker = WorkerAgent("fe_worker", Lane.FE, self.bus, max_messages=self.max_messages_per_agent)
+        self.scribe = ScribeAgent(self.bus, self.decision_layer, batch_interval=2.0, max_messages=self.max_messages_per_agent)
 
         if self.enable_tinyfish:
             from sidecar.tools import ResearchBee, QABee
@@ -371,7 +371,10 @@ class SwarmRunManager(RunManager):
                 return
 
             if not self.queen.plan_done:
-                await self.queen.handle_user_input(message.text)
+                try:
+                    await self.queen.handle_user_input(message.text)
+                except Exception as err:
+                    logger.error(f"Error in queen input handler: {err}", exc_info=True)
                 # If plan was produced from this follow-up message, run the remainder of pipeline
                 if self.queen.plan_done and not self.approval_pending:
                     self._orchestrator_task = asyncio.create_task(
