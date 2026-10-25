@@ -21,7 +21,7 @@ interface HoneycombWhiteboardProps {
   onSelectEvidence: (evidence: EvidenceItem, cardTitle: string) => void;
   onRequestApproval: (card: WhiteboardCard) => void;
   status: "connecting" | "connected" | "disconnected";
-  onTriggerRun: () => void;
+  onTriggerRun?: () => void;
   onResetBoard: () => void;
   isSidebarOpen?: boolean;
   onToggleSidebar?: () => void;
@@ -32,7 +32,6 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
   onSelectEvidence,
   onRequestApproval,
   status,
-  onTriggerRun,
   onResetBoard,
   isSidebarOpen = true,
   onToggleSidebar,
@@ -287,21 +286,12 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
         <div className="canvas-header-controls">
           <button
             type="button"
-            className="retro-control-btn primary-run-btn"
-            onClick={onTriggerRun}
-            title="Trigger Section 9 Waitlist Landing Page Scenario"
-          >
-            <span className="play-icon">▶</span>
-            <span>Run Demo</span>
-          </button>
-          <button
-            type="button"
             className="retro-control-btn reset-btn"
             onClick={onResetBoard}
-            title="Reset Board & Feed"
+            title="Reset Whiteboard & Feed"
           >
             <span>↺</span>
-            <span>Reset</span>
+            <span>Reset Board</span>
           </button>
         </div>
       </div>
@@ -311,97 +301,107 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
         {/* Background Dot Matrix pattern */}
         <div className="canvas-dot-matrix" />
 
-        {cards.length === 0 ? (
-          /* Empty State - Exact Match to Uploaded Design with Honey Progress & Hover Checklist */
-          <div className="empty-whiteboard-view">
-            <BeehiveMascot
-              size="lg"
-              showText
-              progress={progress}
-              checklist={checklist}
-              onToggleItem={handleToggleChecklistItem}
-            />
-          </div>
-        ) : (
-          /* Populated State - Honeycomb Milestone Cards */
-          <div className="populated-whiteboard-view">
-            {/* Whiteboard Sub-Navigation / Filter Bar */}
-            <div className="whiteboard-subbar">
-              <div className="whiteboard-info-group">
-                <div className="whiteboard-mini-mascot">
-                  <BeehiveMascot
-                    size="sm"
-                    progress={progress}
-                    checklist={checklist}
-                    onToggleItem={handleToggleChecklistItem}
-                    forceOpen={isProgressPillHovered}
-                  />
-                </div>
-                <div>
-                  <div className="whiteboard-title-row">
-                    <h2 className="whiteboard-heading">Honeycomb Whiteboard</h2>
-                    <div
-                      className="honey-progress-pill"
-                      title="Hover beehive to view remaining checklist"
-                      onMouseEnter={() => setIsProgressPillHovered(true)}
-                      onMouseLeave={() => setIsProgressPillHovered(false)}
-                      onClick={() => setIsProgressPillHovered((prev) => !prev)}
-                    >
-                      <span className="honey-drop-emoji">🍯</span>
-                      <span className="honey-progress-pct">{progress}% Honey</span>
-                      <span className="honey-progress-sub">({completedCount}/{totalCount} Done)</span>
-                    </div>
-                  </div>
-                  <p className="whiteboard-subheading">
-                    Synthesized project milestones & live verification evidence
-                  </p>
-                </div>
+        <div className="populated-whiteboard-view">
+          {/* Whiteboard Sub-Navigation / Filter Bar - Always Rendered */}
+          <div className="whiteboard-subbar">
+            <div className="whiteboard-info-group">
+              <div className="whiteboard-mini-mascot">
+                <BeehiveMascot
+                  size="sm"
+                  progress={progress}
+                  checklist={checklist}
+                  onToggleItem={handleToggleChecklistItem}
+                  forceOpen={isProgressPillHovered}
+                />
               </div>
-
-              <div className="whiteboard-subbar-right">
-                <div className="order-sort-group">
-                  <span className="filter-label">
-                    <ArrowDownUp size={11} /> Order:
-                  </span>
-                  <button
-                    type="button"
-                    className={`lane-pill-filter ${sortOrder === "order_asc" ? "active" : ""}`}
-                    onClick={() => setSortOrder("order_asc")}
-                    title="Sort by Chronological Milestone Update Order (#1 to #N)"
+              <div>
+                <div className="whiteboard-title-row">
+                  <h2 className="whiteboard-heading">Honeycomb Whiteboard</h2>
+                  <div
+                    className="honey-progress-pill"
+                    title="Hover beehive to view remaining checklist"
+                    onMouseEnter={() => setIsProgressPillHovered(true)}
+                    onMouseLeave={() => setIsProgressPillHovered(false)}
+                    onClick={() => setIsProgressPillHovered((prev) => !prev)}
                   >
-                    #1 → #N
-                  </button>
-                  <button
-                    type="button"
-                    className={`lane-pill-filter ${sortOrder === "order_desc" ? "active" : ""}`}
-                    onClick={() => setSortOrder("order_desc")}
-                    title="Sort by Most Recently Updated First"
-                  >
-                    Latest First
-                  </button>
+                    <span className="honey-drop-emoji">🍯</span>
+                    <span className="honey-progress-pct">{progress}% Honey</span>
+                    <span className="honey-progress-sub">({completedCount}/{totalCount} Done)</span>
+                  </div>
                 </div>
-
-                <div className="lane-filters-group">
-                  <span className="filter-label">
-                    <Filter size={11} /> Filter:
-                  </span>
-                  {lanes.map((l) => (
-                    <button
-                      key={l.id}
-                      type="button"
-                      className={`lane-pill-filter ${selectedLane === l.id ? "active" : ""}`}
-                      onClick={() => setSelectedLane(l.id)}
-                    >
-                      {l.label}
-                    </button>
-                  ))}
-                </div>
+                <p className="whiteboard-subheading">
+                  Synthesized project milestones & live verification evidence
+                </p>
               </div>
             </div>
 
-            {/* Cards Grid */}
-            <div className="cards-canvas-grid">
-              {filteredCards.map((card) => {
+            <div className="whiteboard-subbar-right">
+              <div className="order-sort-group">
+                <span className="filter-label">
+                  <ArrowDownUp size={11} /> Order:
+                </span>
+                <button
+                  type="button"
+                  className={`lane-pill-filter ${sortOrder === "order_asc" ? "active" : ""}`}
+                  onClick={() => setSortOrder("order_asc")}
+                  title="Sort by Chronological Milestone Update Order (#1 to #N)"
+                >
+                  #1 → #N
+                </button>
+                <button
+                  type="button"
+                  className={`lane-pill-filter ${sortOrder === "order_desc" ? "active" : ""}`}
+                  onClick={() => setSortOrder("order_desc")}
+                  title="Sort by Most Recently Updated First"
+                >
+                  Latest First
+                </button>
+              </div>
+
+              <div className="lane-filters-group">
+                <span className="filter-label">
+                  <Filter size={11} /> Filter:
+                </span>
+                {lanes.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    className={`lane-pill-filter ${selectedLane === l.id ? "active" : ""}`}
+                    onClick={() => setSelectedLane(l.id)}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Cards Grid */}
+          <div className="cards-canvas-grid">
+            {filteredCards.length === 0 ? (
+              <div className="empty-whiteboard-grid-placeholder">
+                <div className="empty-placeholder-mascot">
+                  <BeehiveMascot
+                    size="md"
+                    showText={false}
+                    progress={progress}
+                    checklist={checklist}
+                    onToggleItem={handleToggleChecklistItem}
+                  />
+                </div>
+                <h3 className="empty-placeholder-title">
+                  {selectedLane !== "all"
+                    ? `No cards in ${selectedLane} lane`
+                    : "The Hive is Standing By"}
+                </h3>
+                <p className="empty-placeholder-sub">
+                  {selectedLane !== "all"
+                    ? `Milestone cards assigned to ${selectedLane} will appear here as workers execute.`
+                    : "Send a goal in the Nectar Feed to deploy Queen, Workers, Scribe, and QA Bees."}
+                </p>
+              </div>
+            ) : (
+              filteredCards.map((card) => {
                 const isNeedsApproval = card.status === "needs_approval";
                 const orderInfo = orderMap[card.id] || {
                   order: 1,
@@ -593,10 +593,9 @@ export const HoneycombWhiteboard: React.FC<HoneycombWhiteboardProps> = ({
                     </div>
                   </article>
                 );
-              })}
+              }))}
             </div>
-          </div>
-        )}
+        </div>
       </div>
     </section>
   );

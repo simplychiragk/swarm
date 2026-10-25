@@ -18,9 +18,7 @@ export function App() {
     setActiveApproval,
     sendMessage,
     sendApprovalDecision,
-    triggerRun,
-    startNewChat,
-    runId,
+    resetBoard,
     wsUrl,
   } = useSwarmWebSocket();
 
@@ -82,8 +80,7 @@ export function App() {
         <Sidebar
           messages={messages}
           onSendMessage={sendMessage}
-          onNewChat={startNewChat}
-          runId={runId}
+          onResetBoard={resetBoard}
           onOpenSettings={() => setIsSettingsOpen(true)}
           isSidebarOpen={isSidebarOpen}
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
@@ -97,8 +94,7 @@ export function App() {
             status={status}
             onSelectEvidence={(item, cardTitle) => setSelectedEvidence({ item, cardTitle })}
             onRequestApproval={handleRequestApproval}
-            onTriggerRun={triggerRun}
-            onResetBoard={startNewChat}
+            onResetBoard={resetBoard}
             isSidebarOpen={isSidebarOpen}
             onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           />

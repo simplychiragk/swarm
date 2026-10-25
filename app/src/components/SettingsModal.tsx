@@ -655,26 +655,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="settings-config-card">
                 <div className="config-card-header">
                   <Wrench size={15} />
-                  <h4 className="config-title">Swarm Execution Mode</h4>
+                  <h4 className="config-title">Swarm Execution Engine</h4>
                 </div>
                 <div className="mode-toggle-group">
-                  <button
-                    type="button"
-                    className={`mode-btn ${swarmMode === "mock" ? "active" : ""}`}
-                    onClick={() => setSwarmMode("mock")}
-                  >
-                    Mock Scenario (Section 9)
-                  </button>
-                  <button
-                    type="button"
-                    className={`mode-btn ${swarmMode === "live" ? "active" : ""}`}
-                    onClick={() => setSwarmMode("live")}
-                  >
-                    Live Multi-Agent Run
-                  </button>
+                  <div className="mode-btn active" style={{ cursor: "default" }}>
+                    Live Autonomous Multi-Agent Swarm
+                  </div>
                 </div>
                 <p className="section-hint">
-                  Mock scenario exercises the full end-to-end pipeline: Queen interview, TinyFish search, FE/BE builds, Scribe summaries, TinyFish browser QA, and Human approval gate.
+                  Queen Bee coordinates frontend, backend, research, and QA agents with real-time planning, code generation, and browser verification.
                 </p>
               </div>
             </div>

@@ -572,7 +572,7 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
 
           {/* Footer note */}
           <div className="checklist-popover-footer">
-            <span>💡 Click 'Run Demo' to watch the swarm complete tasks & fill the hive</span>
+            <span>💡 Send a message in the chat to start the swarm & fill the hive</span>
           </div>
         </div>
       )}
@@ -596,7 +596,7 @@ export const BeehiveMascot: React.FC<BeehiveMascotProps> = ({
           </h3>
           <p style={{ fontSize: "12px", color: "#7A6C58", maxWidth: "340px", lineHeight: "1.4" }}>
             {safeProgress === 0
-              ? "Start the demo scenario to watch the swarm research, build, and verify in real time while filling the hive."
+              ? "Send a message in the chat to watch the swarm research, build, and verify live while filling the hive."
               : safeProgress === 100
               ? "All milestones are done and verified with live evidence. The hive is overflowing with honey!"
               : "Hover over the beehive to view the remaining milestone checklist."}

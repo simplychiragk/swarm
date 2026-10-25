@@ -56,9 +56,8 @@ export const STARTER_GOALS: StarterGoal[] = [
 
 interface SidebarProps {
   messages: FeedMessage[];
-  onSendMessage: (text: string, mode?: "steer" | "queue" | "interrupt") => void;
-  onNewChat?: () => void;
-  runId?: string;
+  onSendMessage: (text: string) => void;
+  onResetBoard?: () => void;
   onOpenSettings: () => void;
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
@@ -68,8 +67,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   messages,
   onSendMessage,
-  onNewChat,
-  runId,
+  onResetBoard,
   onOpenSettings,
   isSidebarOpen,
   onToggleSidebar,
@@ -79,9 +77,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchInput, setShowSearchInput] = useState(false);
-  const [steerMode, setSteerMode] = useState<"steer" | "queue" | "interrupt">("steer");
-  const [showModeDropdown, setShowModeDropdown] = useState(false);
-  const modeMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Folder toggle states
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
@@ -123,19 +118,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       newFileInputRef.current?.focus();
     }
   }, [isCreatingFile, isCreatingFolder]);
-
-  // Close steering mode dropdown on outside click
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) {
-        setShowModeDropdown(false);
-      }
-    };
-    if (showModeDropdown) {
-      document.addEventListener("mousedown", handleOutsideClick);
-    }
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [showModeDropdown]);
 
   // Close folder menu on click outside or Escape
   useEffect(() => {
@@ -397,9 +379,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleSubmitMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-    onSendMessage(inputText.trim(), steerMode);
+    onSendMessage(inputText.trim());
     setInputText("");
-    setShowModeDropdown(false);
   };
 
   // Base starter files map
@@ -692,23 +673,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* New Chat Session Button */}
-        {onNewChat && (
-          <button
-            type="button"
-            className="sidebar-new-chat-top-btn"
-            onClick={() => {
-              onNewChat();
-              setActiveTab("feed");
-              showToast("New chat session started ✨");
-            }}
-            title="Start New Chat & Fresh Swarm Run"
-          >
-            <Plus size={13} />
-            <span className="new-chat-label">New</span>
-          </button>
-        )}
-
         <button
           type="button"
           className="sidebar-icon-btn sidebar-collapse-btn"
@@ -736,27 +700,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="feed-status-strip">
               <div className="feed-status-left">
                 <span className="feed-title">NECTAR AGENT FEED</span>
-                {runId && (
-                  <span className="feed-run-badge" title={`Active Run ID: ${runId}`}>
-                    #{runId.replace(/^run-/, "").slice(0, 7)}
-                  </span>
-                )}
                 <span className="feed-count">{filteredMessages.length} updates</span>
               </div>
 
               <div className="feed-status-right">
-                {onNewChat && (
+                {onResetBoard && (
                   <button
                     type="button"
                     className="feed-status-action-btn"
                     onClick={() => {
-                      onNewChat();
-                      showToast("Fresh chat session initialized");
+                      onResetBoard();
+                      showToast("Board & feed reset");
                     }}
-                    title="Start New Chat / Reset Run"
+                    title="Reset Feed & Whiteboard"
                   >
-                    <Plus size={11} />
-                    <span>New Chat</span>
+                    <span>↺</span>
+                    <span>Reset</span>
                   </button>
                 )}
                 <button
@@ -793,32 +752,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     Message Queen Bee below. Swarm agents will coordinate, research, code, and test automatically.
                   </p>
 
-                  <div className="feed-starter-container">
-                    <div className="starter-label-row">
-                      <Sparkles size={11} className="starter-sparkle" />
-                      <span>CLICK A STARTER GOAL:</span>
-                    </div>
-                    <div className="starter-chips-list">
-                      {STARTER_GOALS.map((goal, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          className="starter-goal-card"
-                          onClick={() => {
-                            setInputText(goal.prompt);
-                            showToast(`Loaded: ${goal.title}`);
-                          }}
-                          title="Load this prompt into the input"
-                        >
-                          <span className="starter-icon">{goal.icon}</span>
-                          <div className="starter-content">
-                            <span className="starter-title">{goal.title}</span>
-                            <span className="starter-prompt">{goal.prompt}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+
                 </div>
               ) : (
                 filteredMessages.map((m) => {
@@ -857,76 +791,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* User Input Bar to send instructions to Queen */}
             <form onSubmit={handleSubmitMessage} className="feed-input-form">
-              <div className="input-mode-container" ref={modeMenuRef}>
-                <button
-                  type="button"
-                  className={`input-mode-pill mode-${steerMode}`}
-                  onClick={() => setShowModeDropdown((prev) => !prev)}
-                  title={`Steering mode: ${steerMode}. Click to switch.`}
-                >
-                  <span className="mode-dot" />
-                  <span className="mode-text">{steerMode.toUpperCase()}</span>
-                  <ChevronDown size={11} className="mode-caret" />
-                </button>
 
-                {showModeDropdown && (
-                  <div className="input-mode-popover" role="menu">
-                    <button
-                      type="button"
-                      className={`mode-option-btn ${steerMode === "steer" ? "selected" : ""}`}
-                      onClick={() => {
-                        setSteerMode("steer");
-                        setShowModeDropdown(false);
-                      }}
-                    >
-                      <div className="mode-option-title">
-                        <span className="mode-dot mode-dot-steer" />
-                        <strong>Steer (Default)</strong>
-                      </div>
-                      <span className="mode-option-desc">Collaborative interview & plan adaptation</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`mode-option-btn ${steerMode === "queue" ? "selected" : ""}`}
-                      onClick={() => {
-                        setSteerMode("queue");
-                        setShowModeDropdown(false);
-                      }}
-                    >
-                      <div className="mode-option-title">
-                        <span className="mode-dot mode-dot-queue" />
-                        <strong>Queue</strong>
-                      </div>
-                      <span className="mode-option-desc">Queue instruction for the next turn</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`mode-option-btn ${steerMode === "interrupt" ? "selected" : ""}`}
-                      onClick={() => {
-                        setSteerMode("interrupt");
-                        setShowModeDropdown(false);
-                      }}
-                    >
-                      <div className="mode-option-title">
-                        <span className="mode-dot mode-dot-interrupt" />
-                        <strong>Interrupt</strong>
-                      </div>
-                      <span className="mode-option-desc">Immediate high-priority supervisor override</span>
-                    </button>
-                  </div>
-                )}
-              </div>
 
               <input
                 type="text"
                 className="retro-feed-input"
-                placeholder={
-                  steerMode === "interrupt"
-                    ? "Send urgent override to Swarm..."
-                    : steerMode === "queue"
-                    ? "Queue next instruction..."
-                    : "Message Queen Bee or steer swarm..."
-                }
+                placeholder="Message Queen Bee to start swarm..."
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
               />
@@ -945,7 +815,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="submit"
                 className="retro-feed-send-btn"
-                title={`Send instruction (${steerMode})`}
+                title="Send instruction to Queen Bee"
                 disabled={!inputText.trim()}
               >
                 <Send size={14} />

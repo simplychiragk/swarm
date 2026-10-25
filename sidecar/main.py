@@ -288,7 +288,7 @@ async def reset_mock_scenario():
     from sidecar.agents.run_manager import SwarmRunManager
     active_run_manager = SwarmRunManager()
     broadcaster.clear_history()
-    mock_auto_started = False
+    mock_auto_started = True
     return {"status": "reset", "history_len": 0}
 
 

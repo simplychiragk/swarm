@@ -14,7 +14,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
   const [messages, setMessages] = useState<FeedMessage[]>([]);
   const [cards, setCards] = useState<Record<string, WhiteboardCard>>({});
   const [activeApproval, setActiveApproval] = useState<ApprovalRequest | null>(null);
-  const [runId, setRunId] = useState<string>("run-default");
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -22,37 +21,24 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
   const resolvedApprovalsRef = useRef<Set<string>>(new Set());
   const cardsRef = useRef<Record<string, WhiteboardCard>>({});
 
-  // Keep cardsRef synchronized with cards state for synchronous checks
   useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
 
-  const effectiveWsUrl = url.includes("?") ? url : `${url}?run_id=${runId}`;
-
   const connect = useCallback(() => {
-    // If socket is already open or currently connecting to the same run, do not re-initialize
     if (
       socketRef.current &&
       (socketRef.current.readyState === WebSocket.OPEN ||
-        socketRef.current.readyState === WebSocket.CONNECTING) &&
-      socketRef.current.url === effectiveWsUrl
+        socketRef.current.readyState === WebSocket.CONNECTING)
     ) {
       return;
     }
 
-    if (socketRef.current) {
-      try {
-        isIntentionalCloseRef.current = true;
-        socketRef.current.close();
-      } catch {
-        // ignore
-      }
-    }
     isIntentionalCloseRef.current = false;
     setStatus("connecting");
 
     try {
-      const ws = new WebSocket(effectiveWsUrl);
+      const ws = new WebSocket(url);
 
       ws.onopen = () => {
         setStatus("connected");
@@ -75,7 +61,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
               [card.id]: card,
             }));
 
-            // If the card is finalized (done or failed), permanently dismiss any active approval for it
             if (card.status === "done" || card.status === "failed") {
               resolvedApprovalsRef.current.add(card.id);
               setActiveApproval((current) => {
@@ -87,8 +72,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
             }
           } else if (envelope.event === "approval_request") {
             const req = envelope.payload;
-
-            // Check if this approval was already decided or its card is already completed
             const isAlreadyResolved =
               resolvedApprovalsRef.current.has(req.id) ||
               resolvedApprovalsRef.current.has(req.card_id);
@@ -99,7 +82,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
               (existingCard.status === "done" || existingCard.status === "failed");
 
             if (isAlreadyResolved || isCardDone) {
-              // Discard duplicate or already resolved approval request
               return;
             }
 
@@ -112,7 +94,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
 
       ws.onclose = () => {
         setStatus("disconnected");
-        // Only attempt automatic reconnect if this wasn't an intentional cleanup
         if (!isIntentionalCloseRef.current) {
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = window.setTimeout(() => {
@@ -130,7 +111,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
       console.error("WebSocket init error:", e);
       setStatus("disconnected");
     }
-  }, [effectiveWsUrl]);
+  }, [url]);
 
   useEffect(() => {
     isIntentionalCloseRef.current = false;
@@ -144,14 +125,14 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     };
   }, [connect]);
 
-  const sendMessage = useCallback((text: string, mode: "steer" | "queue" | "interrupt" = "steer") => {
+  const sendMessage = useCallback((text: string) => {
     if (!text.trim()) return;
 
     const payload = {
       id: `user-msg-${Date.now()}`,
       text: text.trim(),
       timestamp: new Date().toISOString(),
-      mode,
+      mode: "steer",
     };
 
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -163,7 +144,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
       );
     }
 
-    // Optimistically add to local feed as user message
     setMessages((prev) => [
       ...prev,
       {
@@ -184,7 +164,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
       const approvalId = activeApproval.id;
       const cardId = activeApproval.card_id;
 
-      // Lock this approval immediately so it can NEVER re-trigger
       resolvedApprovalsRef.current.add(approvalId);
       resolvedApprovalsRef.current.add(cardId);
 
@@ -207,7 +186,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
 
       const finalStatus: CardStatus = decision === "approve" ? "done" : "failed";
 
-      // Optimistically update card status locally to final state
       setCards((prev) => {
         const target = prev[cardId];
         const updated: Record<string, WhiteboardCard> = {
@@ -230,19 +208,10 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
         return updated;
       });
 
-      // Clear the active approval dialog immediately
       setActiveApproval(null);
     },
     [activeApproval]
   );
-
-  const triggerRun = useCallback(async () => {
-    try {
-      await fetch("http://127.0.0.1:8000/mock/start", { method: "POST" });
-    } catch (e) {
-      console.error("Trigger error:", e);
-    }
-  }, []);
 
   const resetBoard = useCallback(async () => {
     try {
@@ -261,12 +230,6 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     setActiveApproval(null);
   }, []);
 
-  const startNewChat = useCallback(async (customRunId?: string) => {
-    await resetBoard();
-    const nextRunId = customRunId || `run-${Date.now().toString(36)}`;
-    setRunId(nextRunId);
-  }, [resetBoard]);
-
   return {
     status,
     messages,
@@ -275,11 +238,7 @@ export function useSwarmWebSocket(url: string = DEFAULT_WS_URL) {
     setActiveApproval,
     sendMessage,
     sendApprovalDecision,
-    triggerRun,
     resetBoard,
-    startNewChat,
-    runId,
-    setRunId,
-    wsUrl: effectiveWsUrl,
+    wsUrl: url,
   };
 }
