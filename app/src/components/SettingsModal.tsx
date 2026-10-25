@@ -17,6 +17,7 @@ import {
   Check,
   AlertCircle,
   Copy,
+  HardDrive,
 } from "lucide-react";
 
 interface SettingsModalProps {
@@ -148,6 +149,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // TinyFish Config
   const [tinyFishKey, setTinyFishKey] = useState("tf_live_99a8b7c6d5e4f3a2b1c0");
   const [showTinyFishKey, setShowTinyFishKey] = useState(false);
+
+  // Live Working Directory State
+  const [liveCwd, setLiveCwd] = useState<string>("");
+
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/workspace/tree")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.workspace) setLiveCwd(data.workspace);
+      })
+      .catch(() => {});
+  }, [isOpen]);
 
   // Swarm Mode
   const [swarmMode, setSwarmMode] = useState<"mock" | "live">("mock");
@@ -690,6 +703,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
                 <p className="section-hint">
                   Queen Bee coordinates frontend, backend, research, and QA agents with real-time planning, code generation, and browser verification.
+                </p>
+              </div>
+
+              {/* Working Directory & Project Root */}
+              <div className="settings-config-card">
+                <div className="config-card-header">
+                  <HardDrive size={15} />
+                  <div className="flex-1">
+                    <h4 className="config-title">Working Directory & Project Root</h4>
+                    <span className="config-sub">Real-time repository workspace targeted by agents</span>
+                  </div>
+                  <span className="status-pill pill-connected">REALTIME CWD</span>
+                </div>
+                <div className="connection-info-row" style={{ marginTop: "6px" }}>
+                  <span className="mono-code" style={{ fontSize: "11px", wordBreak: "break-all" }}>
+                    {liveCwd || "./workspace/run-default"}
+                  </span>
+                  <button
+                    type="button"
+                    className="cwd-icon-btn"
+                    onClick={() => {
+                      if (liveCwd) {
+                        navigator.clipboard.writeText(liveCwd);
+                      }
+                    }}
+                    title="Copy Path"
+                    style={{ marginLeft: "8px", background: "transparent", border: "none", cursor: "pointer" }}
+                  >
+                    <Copy size={12} />
+                  </button>
+                </div>
+                <p className="section-hint" style={{ marginTop: "8px" }}>
+                  Agents perform file synthesis, targeted diff operations, and automated test execution directly inside this workspace.
                 </p>
               </div>
             </div>

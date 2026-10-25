@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import type { FeedMessage, AgentSender } from "../types/contracts";
 import type { ProjectFile } from "./FileViewerModal";
 import {
@@ -8,7 +8,6 @@ import {
   FolderOpen,
   ChevronDown,
   ChevronRight,
-  FileCheck,
   Search,
   Send,
   MessageSquare,
@@ -28,6 +27,7 @@ import {
   FileText,
   Check,
   X,
+  Copy,
 } from "lucide-react";
 
 export interface StarterGoal {
@@ -64,6 +64,60 @@ interface SidebarProps {
   onOpenFile: (file: ProjectFile) => void;
 }
 
+interface FileTreeNode {
+  name: string;
+  fullPath: string;
+  isFolder: boolean;
+  children: Record<string, FileTreeNode>;
+  file?: ProjectFile;
+}
+
+function buildFileTree(files: Record<string, ProjectFile>): FileTreeNode {
+  const root: FileTreeNode = {
+    name: "root",
+    fullPath: "",
+    isFolder: true,
+    children: {},
+  };
+
+  const sortedPaths = Object.keys(files).sort();
+
+  for (const pathKey of sortedPaths) {
+    const file = files[pathKey];
+    const clean = file.path.replace(/\\/g, "/").replace(/^\/+/, "");
+    const parts = clean.split("/");
+    let current = root;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isLast = i === parts.length - 1;
+      const currentPath = parts.slice(0, i + 1).join("/");
+
+      if (isLast) {
+        current.children[part] = {
+          name: part,
+          fullPath: currentPath,
+          isFolder: false,
+          children: {},
+          file,
+        };
+      } else {
+        if (!current.children[part]) {
+          current.children[part] = {
+            name: part,
+            fullPath: currentPath,
+            isFolder: true,
+            children: {},
+          };
+        }
+        current = current.children[part];
+      }
+    }
+  }
+
+  return root;
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({
   messages,
   onSendMessage,
@@ -78,14 +132,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchInput, setShowSearchInput] = useState(false);
 
-  // Folder toggle states
+  // Live Working Directory State
+  const [workspacePath, setWorkspacePath] = useState<string>("");
+  const [workspaceName, setWorkspaceName] = useState<string>("workspace");
+  const [openedFolderName, setOpenedFolderName] = useState<string | null>(null);
+
+  // Files map keyed by file.path (e.g. "index.html", "src/App.tsx", "api/main.py")
+  const [filesMap, setFilesMap] = useState<Record<string, ProjectFile>>({});
+
+  // Dynamic folder expansion state (folderPath -> boolean)
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
-    project: true,
-    frontend: true,
-    vscode: false,
-    node_modules: false,
-    public: false,
-    src: true,
+    __root__: true,
   });
 
   // Dynamic file list and creation state
@@ -93,12 +150,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedFilePath, setSelectedFilePath] = useState<string>("frontend/src/index.html");
+  const [selectedFilePath, setSelectedFilePath] = useState<string>("");
   const [sidebarToast, setSidebarToast] = useState<string | null>(null);
 
   // Desktop folder opening & popover state
   const [showFolderMenu, setShowFolderMenu] = useState(false);
-  const [openedFolderName, setOpenedFolderName] = useState<string | null>(null);
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -154,8 +210,68 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const toggleFolder = (folderKey: string) => {
     setExpandedFolders((prev) => ({
       ...prev,
-      [folderKey]: !prev[folderKey],
+      [folderKey]: prev[folderKey] === false ? true : false,
     }));
+  };
+
+  // Real-time workspace tree fetch from sidecar
+  const fetchWorkspaceTree = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/workspace/tree");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.workspace) {
+          setWorkspacePath(data.workspace);
+          const normalized = data.workspace.replace(/\\/g, "/").replace(/\/$/, "");
+          const folderName = normalized.split("/").pop() || "workspace";
+          setWorkspaceName(folderName);
+        }
+        if (data.files && Array.isArray(data.files) && data.files.length > 0) {
+          const newMap: Record<string, ProjectFile> = {};
+          for (const f of data.files) {
+            newMap[f.path] = {
+              name: f.name,
+              path: f.path,
+              language: f.language,
+              content: f.content,
+            };
+          }
+          setFilesMap(newMap);
+
+          // Select first file if nothing selected yet
+          if (!selectedFilePath && data.files[0]) {
+            setSelectedFilePath(data.files[0].path);
+          }
+        }
+      }
+    } catch {
+      // offline/mock fallback
+    }
+  };
+
+  // Fetch workspace on initial mount
+  useEffect(() => {
+    fetchWorkspaceTree();
+  }, []);
+
+  // Sync workspace tree in real time whenever messages arrive
+  useEffect(() => {
+    fetchWorkspaceTree();
+  }, [messages.length]);
+
+  // Periodic poll every 4 seconds when Files tab is active
+  useEffect(() => {
+    if (activeTab === "files") {
+      const timer = setInterval(fetchWorkspaceTree, 4000);
+      return () => clearInterval(timer);
+    }
+  }, [activeTab]);
+
+  const handleRefreshTree = async () => {
+    setIsRefreshing(true);
+    await fetchWorkspaceTree();
+    setIsRefreshing(false);
+    showToast(`Workspace refreshed (${Object.keys(filesMap).length} files)`);
   };
 
   // Open existing folder on Desktop using native browser directory picker or fallback
@@ -176,9 +292,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const readEntries = async (handle: any, currentPath: string) => {
-          if (count >= 150) return;
+          if (count >= 200) return;
           for await (const entry of handle.values()) {
-            if (count >= 150) break;
+            if (count >= 200) break;
             const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
             if (entry.kind === "file") {
               if (
@@ -201,8 +317,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   else if (ext === "md") lang = "markdown";
                   else if (ext === "py") lang = "python";
                   else if (ext === "rs") lang = "rust";
+                  else if (ext === "toml") lang = "toml";
 
-                  newFiles[entry.name] = {
+                  newFiles[entryPath] = {
                     name: entry.name,
                     path: entryPath,
                     language: lang,
@@ -227,13 +344,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }
         };
 
-        await readEntries(dirHandle, rootName);
+        await readEntries(dirHandle, "");
 
         if (count > 0) {
-          setFilesMap((prev) => ({ ...prev, ...newFiles }));
+          setFilesMap(newFiles);
           setOpenedFolderName(rootName);
           setActiveTab("files");
-          setExpandedFolders((prev) => ({ ...prev, [rootName]: true, project: true }));
           showToast(`Opened folder "${rootName}" (${count} files)`);
           return;
         }
@@ -266,7 +382,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     let count = 0;
-    for (let i = 0; i < fileList.length && count < 150; i++) {
+    for (let i = 0; i < fileList.length && count < 200; i++) {
       const file = fileList[i];
       if (file.size > 500 * 1024) continue;
       if (file.webkitRelativePath.includes("/.git/")) continue;
@@ -288,9 +404,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         else if (ext === "rs") lang = "rust";
         else if (ext === "toml") lang = "toml";
 
-        newFiles[file.name] = {
+        // Remove the top folder segment for clean relative display
+        let rel = file.webkitRelativePath || file.name;
+        if (rel.startsWith(rootDirName + "/")) {
+          rel = rel.substring(rootDirName.length + 1);
+        }
+
+        newFiles[rel] = {
           name: file.name,
-          path: file.webkitRelativePath || file.name,
+          path: rel,
           language: lang,
           content: text,
         };
@@ -301,10 +423,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     if (count > 0) {
-      setFilesMap((prev) => ({ ...prev, ...newFiles }));
+      setFilesMap(newFiles);
       setOpenedFolderName(rootDirName);
       setActiveTab("files");
-      setExpandedFolders((prev) => ({ ...prev, [rootDirName]: true, project: true }));
       showToast(`Opened folder "${rootDirName}" (${count} files)`);
     } else {
       showToast(`Opened folder "${rootDirName}"`);
@@ -314,66 +435,120 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setShowFolderMenu(false);
   };
 
-  // Open Desktop directory in Windows File Explorer via Tauri opener
+  // Open working directory in Windows File Explorer via Tauri opener
   const handleOpenInSystemExplorer = async () => {
     setShowFolderMenu(false);
     const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    const targetPath = workspacePath || "";
 
-    if (isTauri) {
+    if (isTauri && targetPath) {
       try {
-        const { desktopDir } = await import("@tauri-apps/api/path");
         const { openPath } = await import("@tauri-apps/plugin-opener");
-        const dDir = await desktopDir();
-        await openPath(dDir);
-        showToast("Opened Desktop in Windows File Explorer");
+        await openPath(targetPath);
+        showToast("Opened working directory in File Explorer");
         return;
       } catch (err) {
         console.error("Tauri openPath failed:", err);
-        showToast("Error opening Desktop folder");
-        return;
       }
     }
 
-    // Fallback if running outside Tauri
-    showToast("Opening folder picker (Desktop app opens File Explorer)");
-    handleBrowseDesktopFolder();
+    if (targetPath) {
+      navigator.clipboard.writeText(targetPath);
+      showToast(`Copied CWD path: ${targetPath}`);
+    } else {
+      showToast("Opening folder picker");
+      handleBrowseDesktopFolder();
+    }
   };
 
-  // Load local Swarm workspace files directly
-  const handleOpenWorkspaceFolder = () => {
-    setShowFolderMenu(false);
-    const workspaceFiles: Record<string, ProjectFile> = {
-      "runner.py": {
-        name: "runner.py",
-        path: "swarm/sidecar/runner.py",
-        language: "python",
-        content: `# Mock swarm runner for sidecar\nimport asyncio\nfrom typing import Dict, Any\n\nclass SwarmRunner:\n    def __init__(self):\n        self.running = False\n        self.step = 0\n\n    async def start(self):\n        self.running = True\n        print("[Swarm] Agent loop started.")\n`,
-      },
-      "server.py": {
-        name: "server.py",
-        path: "swarm/sidecar/server.py",
-        language: "python",
-        content: `# FastAPI / WebSocket sidecar server\nimport uvicorn\nfrom fastapi import FastAPI, WebSocket\n\napp = FastAPI(title="Swarm Sidecar")\n\n@app.websocket("/ws")\nasync def websocket_endpoint(websocket: WebSocket):\n    await websocket.accept()\n    print("Client connected to Swarm WebSocket")\n`,
-      },
-      "App.tsx": {
-        name: "App.tsx",
-        path: "swarm/app/src/App.tsx",
-        language: "typescript",
-        content: `// Root application layout uniting Nectar Feed + Honeycomb Whiteboard\nimport React, { useState } from "react";\nimport { Sidebar } from "./components/Sidebar";\nimport { HoneycombWhiteboard } from "./components/HoneycombWhiteboard";\n\nexport default function App() {\n  return <main className="swarm-app">...</main>;\n}\n`,
-      },
-      "contracts.ts": {
-        name: "contracts.ts",
-        path: "swarm/app/src/types/contracts.ts",
-        language: "typescript",
-        content: `// WebSocket Contracts: Single Source of Truth\nexport type AgentSender = "queen" | "worker" | "scribe" | "qa";\n\nexport interface FeedMessage {\n  id: string;\n  sender: AgentSender;\n  lane?: string;\n  content: string;\n  timestamp: number;\n}\n`,
-      },
-    };
+  const handleSelectFile = (file: ProjectFile) => {
+    setSelectedFilePath(file.path);
+    onOpenFile(file);
+  };
 
-    setFilesMap((prev) => ({ ...prev, ...workspaceFiles }));
-    setOpenedFolderName("swarm");
-    setActiveTab("files");
-    setExpandedFolders((prev) => ({ ...prev, swarm: true, project: true }));
-    showToast("Loaded Swarm Workspace files");
+  const handleConfirmNewItem = async () => {
+    const trimmed = newItemName.trim();
+    if (!trimmed) {
+      setIsCreatingFile(false);
+      setIsCreatingFolder(false);
+      return;
+    }
+
+    const cleanPath = trimmed.replace(/^[/\\]+/, "");
+
+    if (isCreatingFile) {
+      let lang = "typescript";
+      let content = `// ${cleanPath}\n`;
+
+      if (cleanPath.endsWith(".py")) {
+        lang = "python";
+        content = `# ${cleanPath}\n`;
+      } else if (cleanPath.endsWith(".json")) {
+        lang = "json";
+        content = `{\n  "name": "${cleanPath.replace(".json", "")}"\n}\n`;
+      } else if (cleanPath.endsWith(".css")) {
+        lang = "css";
+        content = `/* ${cleanPath} */\n`;
+      } else if (cleanPath.endsWith(".html")) {
+        lang = "html";
+        content = `<!doctype html>\n<html>\n  <body>\n    <h1>${cleanPath}</h1>\n  </body>\n</html>\n`;
+      } else if (cleanPath.endsWith(".md")) {
+        lang = "markdown";
+        content = `# ${cleanPath}\n`;
+      }
+
+      const newFile: ProjectFile = {
+        name: cleanPath.split("/").pop() || cleanPath,
+        path: cleanPath,
+        language: lang,
+        content,
+      };
+
+      setFilesMap((prev) => ({
+        ...prev,
+        [cleanPath]: newFile,
+      }));
+
+      setSelectedFilePath(cleanPath);
+      setIsCreatingFile(false);
+      setNewItemName("");
+
+      try {
+        await fetch("http://127.0.0.1:8000/workspace/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: cleanPath,
+            content,
+            is_directory: false,
+          }),
+        });
+        showToast(`Created file: ${cleanPath}`);
+        await fetchWorkspaceTree();
+        onOpenFile(newFile);
+      } catch (e) {
+        console.warn("Could not sync file to backend:", e);
+      }
+    } else if (isCreatingFolder) {
+      setExpandedFolders((prev) => ({ ...prev, [cleanPath]: true }));
+      setIsCreatingFolder(false);
+      setNewItemName("");
+
+      try {
+        await fetch("http://127.0.0.1:8000/workspace/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: cleanPath,
+            is_directory: true,
+          }),
+        });
+        showToast(`Created folder: ${cleanPath}`);
+        await fetchWorkspaceTree();
+      } catch (e) {
+        console.warn("Could not sync folder to backend:", e);
+      }
+    }
   };
 
   const handleSubmitMessage = (e: React.FormEvent) => {
@@ -383,205 +558,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setInputText("");
   };
 
-  // Base starter files map
-  const [filesMap, setFilesMap] = useState<Record<string, ProjectFile>>({
-    ".gitignore": {
-      name: ".gitignore",
-      path: "frontend/src/.gitignore",
-      language: "gitignore",
-      content: `# Dependencies\nnode_modules/\n.pnpm-store/\n\n# Build outputs\ndist/\nbuild/\napp/dist/\n\n# Environment & Secrets\n.env\n.env.local\n*.key\n*.pem\n\n# OS & IDE\n.DS_Store\nThumbs.db\n*.log`,
-    },
-    ".prettierignore": {
-      name: ".prettierignore",
-      path: "frontend/src/.prettierignore",
-      language: "ignore",
-      content: `node_modules\ndist\npackage-lock.json\n*.min.js\n*.min.css`,
-    },
-    ".prettierrc": {
-      name: ".prettierrc",
-      path: "frontend/src/.prettierrc",
-      language: "json",
-      content: `{\n  "semi": true,\n  "tabWidth": 2,\n  "singleQuote": false,\n  "trailingComma": "es5"\n}`,
-    },
-    "index.html": {
-      name: "index.html",
-      path: "frontend/src/index.html",
-      language: "html",
-      content: `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <link rel="icon" type="image/svg+xml" href="/vite.svg" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Swarm • Honeycomb Workspace</title>\n  </head>\n  <body>\n    <div id="root"></div>\n    <script type="module" src="/src/main.tsx"></script>\n  </body>\n</html>`,
-    },
-    "package-lock.json": {
-      name: "package-lock.json",
-      path: "frontend/src/package-lock.json",
-      language: "json",
-      content: `{\n  "name": "swarm-client",\n  "version": "0.1.0",\n  "lockfileVersion": 3,\n  "requires": true,\n  "packages": {\n    "": {\n      "name": "swarm-client",\n      "version": "0.1.0"\n    }\n  }\n}`,
-    },
-    "package.json": {
-      name: "package.json",
-      path: "frontend/src/package.json",
-      language: "json",
-      content: `{\n  "name": "swarm-app",\n  "private": true,\n  "version": "0.1.0",\n  "type": "module",\n  "scripts": {\n    "dev": "vite",\n    "build": "tsc && vite build",\n    "tauri": "tauri"\n  },\n  "dependencies": {\n    "react": "^19.1.0",\n    "react-dom": "^19.1.0",\n    "lucide-react": "^1.16.0",\n    "@tauri-apps/api": "^2"\n  }\n}`,
-    },
-    "postcss.config.cjs": {
-      name: "postcss.config.cjs",
-      path: "frontend/src/postcss.config.cjs",
-      language: "javascript",
-      content: `module.exports = {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n};`,
-    },
-    "README.md": {
-      name: "README.md",
-      path: "frontend/src/README.md",
-      language: "markdown",
-      content: `# Swarm: Multi-Agent AI Coding Platform\n\nA desktop application where a multi-agent AI coding swarm builds with you in real time.\n\n- **Queen Bee**: Interviews user, plans tasks, delegator\n- **Workers**: FE, BE, DB, Design, Test, Docs\n- **Scribe**: Summarizes chatter into Honeycomb whiteboard\n- **TinyFish**: Live web research before building, and automated real-browser QA with evidence\n- **Decision Layer (Jev)**: Rule-based routing and human-in-the-loop authorization gates.`,
-    },
-    "tailwind.config.cjs": {
-      name: "tailwind.config.cjs",
-      path: "frontend/src/tailwind.config.cjs",
-      language: "javascript",
-      content: `/** @type {import('tailwindcss').Config} */\nmodule.exports = {\n  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],\n  theme: {\n    extend: {\n      colors: {\n        honey: "#E5A12D",\n        "honey-dark": "#C57E12",\n        canvas: "#FBF6E9",\n      },\n    },\n  },\n  plugins: [],\n};`,
-    },
-    "vite.config.js": {
-      name: "vite.config.js",
-      path: "frontend/src/vite.config.js",
-      language: "javascript",
-      content: `import { defineConfig } from "vite";\nimport react from "@vitejs/plugin-react";\n\nexport default defineConfig({\n  plugins: [react()],\n  server: {\n    port: 1420,\n    strictPort: true,\n  },\n});`,
-    },
-  });
-
-  // Additional custom subfolders created by user
-  const [customFolders, setCustomFolders] = useState<string[]>([]);
-
-  // List of filenames under src
-  const srcFileNames = Object.keys(filesMap).filter((k) =>
-    filesMap[k].path.startsWith("frontend/src/")
-  );
-
-  const handleSelectFile = (fileName: string) => {
-    const file = filesMap[fileName];
-    if (file) {
-      setSelectedFilePath(file.path);
-      onOpenFile(file);
-    }
-  };
-
-  const handleConfirmNewItem = () => {
-    const trimmed = newItemName.trim();
-    if (!trimmed) {
-      setIsCreatingFile(false);
-      setIsCreatingFolder(false);
-      return;
-    }
-
-    if (isCreatingFile) {
-      // Determine language and boilerplate
-      let lang = "typescript";
-      let content = `// ${trimmed}\n\nexport const Component = () => {\n  return <div>${trimmed}</div>;\n};\n`;
-
-      if (trimmed.endsWith(".json")) {
-        lang = "json";
-        content = `{\n  "name": "${trimmed.replace(".json", "")}"\n}`;
-      } else if (trimmed.endsWith(".css")) {
-        lang = "css";
-        content = `/* ${trimmed} */\n.container {\n  padding: 16px;\n}\n`;
-      } else if (trimmed.endsWith(".html")) {
-        lang = "html";
-        content = `<!doctype html>\n<html>\n  <body>\n    <h1>${trimmed}</h1>\n  </body>\n</html>`;
-      } else if (trimmed.endsWith(".md")) {
-        lang = "markdown";
-        content = `# ${trimmed}\n\nDocument details here.\n`;
-      }
-
-      const newFile: ProjectFile = {
-        name: trimmed,
-        path: `frontend/src/${trimmed}`,
-        language: lang,
-        content,
-      };
-
-      setFilesMap((prev) => ({
-        ...prev,
-        [trimmed]: newFile,
-      }));
-
-      setSelectedFilePath(newFile.path);
-      setIsCreatingFile(false);
-      setNewItemName("");
-
-      // Sync to backend workspace
-      fetch("http://127.0.0.1:8000/workspace/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: `src/${trimmed}`,
-          content,
-          is_directory: false,
-        }),
-      }).catch((e) => console.warn("Could not sync file to backend:", e));
-
-      showToast(`Created file: ${trimmed}`);
-      onOpenFile(newFile);
-    } else if (isCreatingFolder) {
-      setCustomFolders((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
-      setExpandedFolders((prev) => ({ ...prev, [trimmed]: true }));
-      setIsCreatingFolder(false);
-      setNewItemName("");
-
-      fetch("http://127.0.0.1:8000/workspace/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: `src/${trimmed}`,
-          is_directory: true,
-        }),
-      }).catch((e) => console.warn("Could not sync folder to backend:", e));
-
-      showToast(`Created folder: ${trimmed}`);
-    }
-  };
-
-  const fetchWorkspaceTree = async () => {
-    try {
-      const res = await fetch("http://127.0.0.1:8000/workspace/tree");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.files && Array.isArray(data.files) && data.files.length > 0) {
-          const newMap: Record<string, ProjectFile> = {};
-          for (const f of data.files) {
-            const displayPath = f.path.startsWith("src/")
-              ? `frontend/${f.path}`
-              : `frontend/src/${f.path}`;
-            newMap[f.name] = {
-              name: f.name,
-              path: displayPath,
-              language: f.language,
-              content: f.content,
-            };
-          }
-          setFilesMap((prev) => ({ ...prev, ...newMap }));
-        }
-      }
-    } catch {
-      // offline/mock fallback
-    }
-  };
-
-  useEffect(() => {
-    fetchWorkspaceTree();
-  }, []);
-
-  const handleRefreshTree = async () => {
-    setIsRefreshing(true);
-    setExpandedFolders({
-      project: true,
-      frontend: true,
-      vscode: true,
-      node_modules: false,
-      public: true,
-      src: true,
-    });
-    await fetchWorkspaceTree();
-    setIsRefreshing(false);
-    showToast("Files refreshed from workspace");
-  };
+  // Build the hierarchical tree from the live files map
+  const treeRoot = useMemo(() => buildFileTree(filesMap), [filesMap]);
 
   const getAgentBadge = (sender: AgentSender) => {
     switch (sender) {
@@ -635,6 +613,98 @@ export const Sidebar: React.FC<SidebarProps> = ({
     );
   });
 
+  // Recursive tree node renderer
+  const renderTreeNode = (node: FileTreeNode, depth = 0): React.ReactNode => {
+    if (node.isFolder) {
+      const isExpanded = expandedFolders[node.fullPath] !== false; // default expanded
+      const childKeys = Object.keys(node.children).sort((a, b) => {
+        const aIsFolder = node.children[a].isFolder;
+        const bIsFolder = node.children[b].isFolder;
+        if (aIsFolder && !bIsFolder) return -1;
+        if (!aIsFolder && bIsFolder) return 1;
+        return a.localeCompare(b);
+      });
+
+      return (
+        <div key={node.fullPath || "root"} className="tree-folder-group">
+          {node.fullPath && (
+            <div
+              className={`tree-item folder-item indent-${Math.min(depth, 5)}`}
+              onClick={() => toggleFolder(node.fullPath)}
+              title={`Folder: ${node.fullPath}`}
+            >
+              <div className="tree-item-left">
+                {isExpanded ? (
+                  <ChevronDown size={13} className="tree-chevron" />
+                ) : (
+                  <ChevronRight size={13} className="tree-chevron" />
+                )}
+                {isExpanded ? (
+                  <FolderOpen size={14} className="folder-icon text-amber-700" />
+                ) : (
+                  <Folder size={14} className="folder-icon text-amber-700" />
+                )}
+                <span className="item-name font-medium">{node.name}</span>
+              </div>
+              <span className="folder-item-count">{childKeys.length}</span>
+            </div>
+          )}
+
+          {(isExpanded || !node.fullPath) && (
+            <div className="tree-folder-children">
+              {childKeys.map((childKey) =>
+                renderTreeNode(node.children[childKey], node.fullPath ? depth + 1 : depth)
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const file = node.file!;
+    const isSelected = selectedFilePath === file.path;
+
+    let badge = <FileText size={13} className="text-stone-500" />;
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+
+    if (ext === "tsx" || ext === "ts") {
+      badge = <span className="file-badge-text ts-icon font-mono font-bold">TS</span>;
+    } else if (ext === "jsx" || ext === "js" || ext === "mjs") {
+      badge = <span className="file-badge-text js-icon font-mono font-bold">JS</span>;
+    } else if (ext === "py") {
+      badge = <span className="file-badge-text py-icon font-mono font-bold">PY</span>;
+    } else if (ext === "html") {
+      badge = <span className="file-badge-text html-icon font-mono font-bold">5</span>;
+    } else if (ext === "css") {
+      badge = <span className="file-badge-text css-icon font-mono font-bold">#</span>;
+    } else if (ext === "json") {
+      badge = <span className="file-badge-text json-icon font-mono font-bold">{}</span>;
+    } else if (ext === "md") {
+      badge = <span className="file-badge-text md-icon font-mono font-bold">M↓</span>;
+    } else if (ext === "svg" || ext === "png" || ext === "ico") {
+      badge = <span className="file-badge-text img-icon font-mono font-bold">❖</span>;
+    }
+
+    return (
+      <div
+        key={file.path}
+        className={`tree-item file-item indent-${Math.min(depth, 5)} ${
+          isSelected ? "selected-file-pill" : ""
+        }`}
+        onClick={() => handleSelectFile(file)}
+        title={`Click to preview code: ${file.path}`}
+      >
+        <div className="tree-item-left">
+          {badge}
+          <span className="item-name">{file.name}</span>
+        </div>
+        {isSelected && <span className="file-view-indicator">View</span>}
+      </div>
+    );
+  };
+
+  const displayRootName = openedFolderName || workspaceName || "workspace";
+
   return (
     <aside className={`retro-sidebar ${!isSidebarOpen ? "collapsed" : ""}`} aria-label="Sidebar">
       {/* Top Controls Header */}
@@ -670,6 +740,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <Folder size={13} />
             <span>Files</span>
+            {Object.keys(filesMap).length > 0 && (
+              <span className="tab-badge files-count-badge">{Object.keys(filesMap).length}</span>
+            )}
           </button>
         </div>
 
@@ -751,8 +824,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <p className="feed-empty-sub">
                     Message Queen Bee below. Swarm agents will coordinate, research, code, and test automatically.
                   </p>
-
-
                 </div>
               ) : (
                 filteredMessages.map((m) => {
@@ -830,8 +901,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* User Input Bar to send instructions to Queen */}
             <form onSubmit={handleSubmitMessage} className="feed-input-form">
-
-
               <input
                 type="text"
                 className="retro-feed-input"
@@ -862,20 +931,65 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </form>
           </div>
         ) : (
-          /* PROJECT EXPLORER VIEW (Full interactive files tree) */
+          /* PROJECT EXPLORER VIEW (Real-Time Working Directory Tree) */
           <div className="project-tree-view">
+            {/* Live Working Directory Indicator Strip */}
+            <div
+              className="cwd-indicator-strip"
+              title={`Live Working Directory: ${workspacePath || "Live Swarm Workspace"}`}
+            >
+              <div className="cwd-indicator-left">
+                <span className="cwd-pulse-dot" />
+                <span className="cwd-tag">CWD</span>
+                <span className="cwd-path-text" title={workspacePath || "workspace/run-default"}>
+                  {workspacePath
+                    ? workspacePath.length > 34
+                      ? `...${workspacePath.slice(-32)}`
+                      : workspacePath
+                    : "workspace/run-default"}
+                </span>
+              </div>
+              <div className="cwd-indicator-right">
+                <button
+                  type="button"
+                  className="cwd-icon-btn"
+                  onClick={() => {
+                    if (workspacePath) {
+                      navigator.clipboard.writeText(workspacePath);
+                      showToast("Copied working directory path");
+                    } else {
+                      showToast("Live working directory connected");
+                    }
+                  }}
+                  title="Copy Working Directory Path"
+                >
+                  <Copy size={11} />
+                </button>
+                <button
+                  type="button"
+                  className="cwd-icon-btn"
+                  onClick={handleOpenInSystemExplorer}
+                  title="Open Working Directory in File Explorer"
+                >
+                  <ExternalLink size={11} />
+                </button>
+              </div>
+            </div>
+
             {/* Tree Root */}
             <div className="tree-root-header">
               <div
                 className="tree-root-label"
-                onClick={() => toggleFolder("project")}
+                onClick={() => toggleFolder("__root__")}
+                title={`Root: ${workspacePath || displayRootName}`}
               >
-                {expandedFolders.project ? (
+                {expandedFolders.__root__ !== false ? (
                   <ChevronDown size={14} className="tree-arrow" />
                 ) : (
                   <ChevronRight size={14} className="tree-arrow" />
                 )}
-                <span className="tree-root-title">FINAL-PROJECT</span>
+                <span className="tree-root-title">{displayRootName.toUpperCase()}</span>
+                <span className="live-workspace-badge">LIVE CWD</span>
               </div>
 
               {/* Functional Action Icons: New File, New Folder, Refresh */}
@@ -883,14 +997,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   className="tree-action-btn"
-                  title="New File (in src)"
+                  title="New File (relative to working directory)"
                   onClick={() => {
                     setIsCreatingFolder(false);
                     setIsCreatingFile(true);
                     setNewItemName("");
-                    if (!expandedFolders.src) {
-                      setExpandedFolders((p) => ({ ...p, src: true }));
-                    }
                   }}
                 >
                   <Plus size={13} />
@@ -912,7 +1023,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   className={`tree-action-btn ${isRefreshing ? "spin-icon" : ""}`}
-                  title="Refresh File Tree"
+                  title="Refresh Working Directory (Real-time sync)"
                   onClick={handleRefreshTree}
                 >
                   <RefreshCw size={12} />
@@ -927,12 +1038,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {isCreatingFile ? (
                     <>
                       <FileCode size={13} className="text-amber-800" />
-                      <span>New File in src/</span>
+                      <span>New File in {displayRootName}/</span>
                     </>
                   ) : (
                     <>
                       <Folder size={13} className="text-amber-800" />
-                      <span>New Folder</span>
+                      <span>New Folder in {displayRootName}/</span>
                     </>
                   )}
                 </div>
@@ -941,7 +1052,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     ref={newFileInputRef}
                     type="text"
                     className="inline-create-input"
-                    placeholder={isCreatingFile ? "e.g. Header.tsx, style.css" : "e.g. components, utils"}
+                    placeholder={
+                      isCreatingFile
+                        ? "e.g. App.tsx, src/utils.ts, api/routes.py"
+                        : "e.g. src/components, api/models"
+                    }
                     value={newItemName}
                     onChange={(e) => setNewItemName(e.target.value)}
                     onKeyDown={(e) => {
@@ -975,310 +1090,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
 
-            {/* Tree Items */}
-            {expandedFolders.project && (
+            {/* Dynamic Hierarchical Tree Items from Live CWD */}
+            {expandedFolders.__root__ !== false && (
               <div className="tree-items-list">
-                {/* Opened Desktop Folder if present */}
-                {openedFolderName && (
-                  <div className="opened-desktop-folder-box">
-                    <div
-                      className="tree-item folder-item selected-folder-pill indent-0"
-                      onClick={() => toggleFolder(openedFolderName)}
-                    >
-                      <div className="tree-item-left">
-                        {expandedFolders[openedFolderName] !== false ? (
-                          <ChevronDown size={13} className="tree-chevron" />
-                        ) : (
-                          <ChevronRight size={13} className="tree-chevron" />
-                        )}
-                        <FolderOpen size={14} className="folder-icon text-amber-800" />
-                        <span className="item-name font-bold text-amber-950">
-                          {openedFolderName}
-                        </span>
-                      </div>
-                      <span className="opened-folder-badge">DESKTOP</span>
-                    </div>
-
-                    {expandedFolders[openedFolderName] !== false && (
-                      <div className="opened-folder-files-list">
-                        {Object.values(filesMap)
-                          .filter(
-                            (f) =>
-                              f.path.startsWith(openedFolderName + "/") ||
-                              f.path.startsWith("swarm/") ||
-                              !f.path.startsWith("frontend/")
-                          )
-                          .map((file) => {
-                            const isSelected = selectedFilePath === file.path;
-                            return (
-                              <div
-                                key={file.path}
-                                className={`tree-item file-item indent-1 ${
-                                  isSelected ? "selected-file-pill" : ""
-                                }`}
-                                onClick={() => handleSelectFile(file.name)}
-                                title={`Click to preview code: ${file.name}`}
-                              >
-                                <div className="tree-item-left">
-                                  <FileText size={13} className="text-amber-800" />
-                                  <span className="item-name">{file.name}</span>
-                                </div>
-                                {isSelected && (
-                                  <span className="file-view-indicator">View</span>
-                                )}
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
+                {Object.keys(filesMap).length === 0 ? (
+                  <div className="empty-tree-placeholder">
+                    <HardDrive size={18} className="text-stone-400" />
+                    <span>Working Directory is Empty</span>
+                    <p>Ask Queen Bee to build a project or click '+' to create files.</p>
                   </div>
-                )}
-                {/* frontend folder with green dot */}
-                <div
-                  className="tree-item folder-item"
-                  onClick={() => toggleFolder("frontend")}
-                >
-                  <div className="tree-item-left">
-                    {expandedFolders.frontend ? (
-                      <ChevronDown size={13} className="tree-chevron" />
-                    ) : (
-                      <ChevronRight size={13} className="tree-chevron" />
-                    )}
-                    {expandedFolders.frontend ? (
-                      <FolderOpen size={14} className="folder-icon text-amber-700" />
-                    ) : (
-                      <Folder size={14} className="folder-icon text-amber-700" />
-                    )}
-                    <span className="item-name font-medium">frontend</span>
-                  </div>
-                  <span className="folder-live-dot" title="Active development container" />
-                </div>
-
-                {expandedFolders.frontend && (
-                  <>
-                    {/* .vscode folder */}
-                    <div
-                      className="tree-item folder-item indent-1"
-                      onClick={() => toggleFolder("vscode")}
-                    >
-                      <div className="tree-item-left">
-                        {expandedFolders.vscode ? (
-                          <ChevronDown size={13} className="tree-chevron" />
-                        ) : (
-                          <ChevronRight size={13} className="tree-chevron" />
-                        )}
-                        <Folder size={14} className="folder-icon text-stone-500" />
-                        <span className="item-name text-stone-600">.vscode</span>
-                      </div>
-                    </div>
-
-                    {expandedFolders.vscode && (
-                      <div className="vscode-files-list">
-                        <div
-                          className="tree-item file-item indent-2"
-                          onClick={() =>
-                            onOpenFile({
-                              name: "settings.json",
-                              path: "frontend/.vscode/settings.json",
-                              language: "json",
-                              content: `{\n  "editor.formatOnSave": true,\n  "editor.defaultFormatter": "esbenp.prettier-vscode",\n  "typescript.tsdk": "node_modules/typescript/lib"\n}`,
-                            })
-                          }
-                        >
-                          <FileCheck size={13} className="json-icon" />
-                          <span className="item-name">settings.json</span>
-                        </div>
-                        <div
-                          className="tree-item file-item indent-2"
-                          onClick={() =>
-                            onOpenFile({
-                              name: "extensions.json",
-                              path: "frontend/.vscode/extensions.json",
-                              language: "json",
-                              content: `{\n  "recommendations": [\n    "dbaeumer.vscode-eslint",\n    "esbenp.prettier-vscode",\n    "bradlc.vscode-tailwindcss"\n  ]\n}`,
-                            })
-                          }
-                        >
-                          <FileCheck size={13} className="json-icon" />
-                          <span className="item-name">extensions.json</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* node_modules folder */}
-                    <div
-                      className="tree-item folder-item indent-1"
-                      onClick={() => toggleFolder("node_modules")}
-                    >
-                      <div className="tree-item-left">
-                        {expandedFolders.node_modules ? (
-                          <ChevronDown size={13} className="tree-chevron" />
-                        ) : (
-                          <ChevronRight size={13} className="tree-chevron" />
-                        )}
-                        <Folder size={14} className="folder-icon text-stone-500" />
-                        <span className="item-name text-stone-600">node_modules</span>
-                      </div>
-                      <span className="node-modules-count">28 pkgs</span>
-                    </div>
-
-                    {expandedFolders.node_modules && (
-                      <div className="node-modules-list">
-                        <div className="tree-item file-item indent-2 opacity-75">
-                          <span className="file-badge-text font-mono">📦</span>
-                          <span className="item-name">@tauri-apps/api</span>
-                        </div>
-                        <div className="tree-item file-item indent-2 opacity-75">
-                          <span className="file-badge-text font-mono">📦</span>
-                          <span className="item-name">lucide-react</span>
-                        </div>
-                        <div className="tree-item file-item indent-2 opacity-75">
-                          <span className="file-badge-text font-mono">📦</span>
-                          <span className="item-name">react</span>
-                        </div>
-                        <div className="tree-item file-item indent-2 opacity-75">
-                          <span className="file-badge-text font-mono">📦</span>
-                          <span className="item-name">tailwindcss</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* public folder */}
-                    <div
-                      className="tree-item folder-item indent-1"
-                      onClick={() => toggleFolder("public")}
-                    >
-                      <div className="tree-item-left">
-                        {expandedFolders.public ? (
-                          <ChevronDown size={13} className="tree-chevron" />
-                        ) : (
-                          <ChevronRight size={13} className="tree-chevron" />
-                        )}
-                        <Folder size={14} className="folder-icon text-stone-500" />
-                        <span className="item-name text-stone-600">public</span>
-                      </div>
-                    </div>
-
-                    {expandedFolders.public && (
-                      <div className="public-files-list">
-                        <div
-                          className="tree-item file-item indent-2"
-                          onClick={() =>
-                            onOpenFile({
-                              name: "tauri.svg",
-                              path: "frontend/public/tauri.svg",
-                              language: "svg",
-                              content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n  <circle cx="50" cy="50" r="40" fill="#24C8DB"/>\n</svg>`,
-                            })
-                          }
-                        >
-                          <span className="file-badge-text font-mono text-cyan-600">❖</span>
-                          <span className="item-name">tauri.svg</span>
-                        </div>
-                        <div
-                          className="tree-item file-item indent-2"
-                          onClick={() =>
-                            onOpenFile({
-                              name: "vite.svg",
-                              path: "frontend/public/vite.svg",
-                              language: "svg",
-                              content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n  <polygon points="50,10 90,90 10,90" fill="#FFC93C"/>\n</svg>`,
-                            })
-                          }
-                        >
-                          <span className="file-badge-text vite-icon">⚡</span>
-                          <span className="item-name">vite.svg</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Custom User Folders */}
-                    {customFolders.map((cFolder) => (
-                      <div
-                        key={cFolder}
-                        className="tree-item folder-item indent-1"
-                        onClick={() => toggleFolder(cFolder)}
-                      >
-                        <div className="tree-item-left">
-                          {expandedFolders[cFolder] ? (
-                            <ChevronDown size={13} className="tree-chevron" />
-                          ) : (
-                            <ChevronRight size={13} className="tree-chevron" />
-                          )}
-                          <Folder size={14} className="folder-icon text-amber-600" />
-                          <span className="item-name font-medium">{cFolder}</span>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* src folder (Selected highlight pill matching screenshot) */}
-                    <div
-                      className={`tree-item folder-item selected-folder-pill indent-1`}
-                      onClick={() => toggleFolder("src")}
-                    >
-                      <div className="tree-item-left">
-                        {expandedFolders.src ? (
-                          <ChevronDown size={13} className="tree-chevron" />
-                        ) : (
-                          <ChevronRight size={13} className="tree-chevron" />
-                        )}
-                        <span className="src-code-tag">&lt;/&gt;</span>
-                        <span className="item-name font-semibold">src</span>
-                      </div>
-                      <span className="src-active-ring" />
-                    </div>
-
-                    {/* Files under src */}
-                    {expandedFolders.src && (
-                      <div className="src-files-list">
-                        {srcFileNames.map((fileName) => {
-                          const file = filesMap[fileName];
-                          const isSelected = selectedFilePath === file.path;
-
-                          let badgeIcon = <FileText size={13} className="text-stone-500" />;
-
-                          if (fileName.includes("git")) {
-                            badgeIcon = <span className="file-badge-text git-icon">&lt;</span>;
-                          } else if (fileName.includes("prettier")) {
-                            badgeIcon = <span className="file-badge-text prettier-icon">P</span>;
-                          } else if (fileName.endsWith(".html")) {
-                            badgeIcon = <span className="file-badge-text html-icon">5</span>;
-                          } else if (fileName.endsWith(".json")) {
-                            badgeIcon = <FileCheck size={13} className="json-icon" />;
-                          } else if (fileName.includes("postcss")) {
-                            badgeIcon = <span className="file-badge-dot red-dot" />;
-                          } else if (fileName.endsWith(".md")) {
-                            badgeIcon = <span className="file-badge-text info-icon">i</span>;
-                          } else if (fileName.includes("tailwind")) {
-                            badgeIcon = <span className="file-badge-text tailwind-icon">≈</span>;
-                          } else if (fileName.includes("vite")) {
-                            badgeIcon = <span className="file-badge-text vite-icon">⚡</span>;
-                          } else if (fileName.endsWith(".tsx") || fileName.endsWith(".ts")) {
-                            badgeIcon = <span className="file-badge-text text-blue-700 font-bold">TS</span>;
-                          } else if (fileName.endsWith(".css")) {
-                            badgeIcon = <span className="file-badge-text text-cyan-700 font-bold">#</span>;
-                          }
-
-                          return (
-                            <div
-                              key={fileName}
-                              className={`tree-item file-item indent-2 ${
-                                isSelected ? "selected-file-pill" : ""
-                              }`}
-                              onClick={() => handleSelectFile(fileName)}
-                              title={`Click to preview code: ${fileName}`}
-                            >
-                              <div className="tree-item-left">
-                                {badgeIcon}
-                                <span className="item-name">{fileName}</span>
-                              </div>
-                              {isSelected && <span className="file-view-indicator">View</span>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
+                ) : (
+                  renderTreeNode(treeRoot)
                 )}
               </div>
             )}
@@ -1286,7 +1108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* Bottom Profile Bar (Exact match to design screenshot with Desktop Folder opener) */}
+      {/* Bottom Profile Bar */}
       <div className="sidebar-bottom-bar">
         <div className="sidebar-bottom-left-group">
           <div className="user-profile-pill">
@@ -1298,14 +1120,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="user-profile-name">User1</span>
           </div>
 
-          {/* Icon next to User1 that opens an already existing folder on our desktop */}
+          {/* Working Directory / Desktop Folder Popover Button */}
           <div className="sidebar-folder-btn-wrapper" ref={folderMenuRef}>
             <button
               type="button"
               className={`sidebar-folder-btn ${showFolderMenu ? "active" : ""}`}
               onClick={() => setShowFolderMenu((prev) => !prev)}
-              title="Open already existing folder on Desktop"
-              aria-label="Open already existing folder on Desktop"
+              title="Working Directory & Folder Actions"
+              aria-label="Working Directory & Folder Actions"
             >
               <FolderOpen size={16} />
             </button>
@@ -1315,12 +1137,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div
                 className="desktop-folder-popover"
                 role="dialog"
-                aria-label="Open desktop folder menu"
+                aria-label="Working directory menu"
               >
                 <div className="popover-header">
                   <span className="popover-header-title">
-                    <FolderOpen size={13} />
-                    <span>Desktop Folders</span>
+                    <HardDrive size={13} />
+                    <span>Working Directory & Files</span>
                   </span>
                   <button
                     type="button"
@@ -1332,10 +1154,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </button>
                 </div>
 
+                {/* Active CWD Card */}
+                <div className="popover-cwd-card">
+                  <div className="cwd-card-header">
+                    <span className="cwd-live-tag">
+                      <span className="cwd-dot-green" /> LIVE RUNTIME CWD
+                    </span>
+                    <span className="cwd-file-count">{Object.keys(filesMap).length} files</span>
+                  </div>
+                  <div className="cwd-card-path" title={workspacePath || "./workspace/run-default"}>
+                    <code>{workspacePath || "./workspace/run-default"}</code>
+                  </div>
+                </div>
+
                 <div className="popover-options-list">
                   <button
                     type="button"
                     className="popover-option-btn primary-option"
+                    onClick={handleOpenInSystemExplorer}
+                    title="Open Working Directory in Windows File Explorer"
+                  >
+                    <div className="popover-option-icon">
+                      <ExternalLink size={16} />
+                    </div>
+                    <div className="popover-option-text">
+                      <span className="popover-option-label">Open in File Explorer</span>
+                      <span className="popover-option-desc">
+                        Launch Windows Explorer at active working directory
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="popover-option-btn"
                     onClick={handleBrowseDesktopFolder}
                     title="Select an existing folder from your Desktop to open into Swarm"
                   >
@@ -1345,7 +1197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div className="popover-option-text">
                       <span className="popover-option-label">Open Folder from Desktop...</span>
                       <span className="popover-option-desc">
-                        Select an existing folder from Desktop to view and edit in Swarm
+                        Browse external repository or desktop folder
                       </span>
                     </div>
                   </button>
@@ -1353,33 +1205,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     type="button"
                     className="popover-option-btn"
-                    onClick={handleOpenInSystemExplorer}
-                    title="Open Desktop in Windows File Explorer"
+                    onClick={() => {
+                      setOpenedFolderName(null);
+                      handleRefreshTree();
+                      setShowFolderMenu(false);
+                    }}
+                    title="Reload files directly from live sidecar workspace"
                   >
                     <div className="popover-option-icon">
-                      <ExternalLink size={16} />
+                      <RefreshCw size={16} />
                     </div>
                     <div className="popover-option-text">
-                      <span className="popover-option-label">Open in File Explorer</span>
+                      <span className="popover-option-label">Reload Live Workspace</span>
                       <span className="popover-option-desc">
-                        Launch Windows Explorer at Desktop / Project directory
-                      </span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="popover-option-btn"
-                    onClick={handleOpenWorkspaceFolder}
-                    title="Open current workspace directory in Swarm"
-                  >
-                    <div className="popover-option-icon">
-                      <HardDrive size={16} />
-                    </div>
-                    <div className="popover-option-text">
-                      <span className="popover-option-label">Load Swarm Workspace</span>
-                      <span className="popover-option-desc">
-                        Load existing files from desktop project workspace
+                        Fetch latest agent changes from working directory
                       </span>
                     </div>
                   </button>
