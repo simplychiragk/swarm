@@ -26,7 +26,7 @@ class Database:
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or get_default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._conn: Optional[sqlite3.Connection] = None
         self._init_connection()
 

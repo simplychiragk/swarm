@@ -58,6 +58,7 @@ async def run_e2e_mock() -> None:
     env["SWARM_MODE"] = "mock"
     env["SWARM_PACING"] = "fast"
     env["SWARM_PERMISSION_MODE"] = "demo"
+    env["SWARM_AUTO_RUN_DEMO"] = "true"
     env["SWARM_DB_PATH"] = str(db_file)
     env["PYTHONUNBUFFERED"] = "1"
 
