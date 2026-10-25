@@ -3,11 +3,18 @@ Worker Bee Agents for Swarm.
 Owns execution in a specific lane (BE, FE). Calls LLM gateway for deliverables,
 writes real project files into workspace/<run_id>/, coordinates with peer workers,
 and supports seeded-bug demo mode and automated fix loops.
+
+Gap 2/3/4 upgrade: when SWARM_PROJECT_ROOT is set, workers operate as a true local
+coding agent harness — they list directories, read target source files, emit targeted
+edit operations (search-and-replace) instead of overwriting whole files, and run an
+allowlisted test command in a self-correcting loop (max 3 retries) before escalating.
 """
 
 import os
+import re
+import json
 import logging
-from typing import Optional, Dict, Any, Set
+from typing import Optional, Dict, Any, Set, List
 from pydantic import BaseModel, Field
 
 from sidecar.models.contracts import (
@@ -24,6 +31,8 @@ from .bus import MessageBus
 
 logger = logging.getLogger("swarm.agents.worker")
 
+_failure_file_rx = re.compile(r"([\w/.]+\.(?:py|tsx?|jsx?|css|html))")
+
 
 class DeliverableSchema(BaseModel):
     message: str = Field(..., description="Worker progress narrative")
@@ -31,14 +40,38 @@ class DeliverableSchema(BaseModel):
     status: str = Field(default="done", description="Lifecycle status")
 
 
+class FileOp(BaseModel):
+    """Single targeted file operation emitted by the Worker LLM (Gap 2)."""
+    file: str = Field(..., description="Workspace-relative file path")
+    action: str = Field(..., description="'create' for new files, 'edit' for search-and-replace on existing files")
+    target: Optional[str] = Field(default=None, description="Exact code block to locate (edit action only)")
+    replacement: Optional[str] = Field(default=None, description="Replacement block (edit action only)")
+    content: Optional[str] = Field(default=None, description="Full file content (create action only)")
+    intent: str = Field(default="", description="One-line reason for this change")
+
+
+class EditOpsSchema(BaseModel):
+    """Structured targeted-edit output for project-mode workers."""
+    message: str = Field(default="", description="Worker progress narrative")
+    technical_spec: str = Field(default="", description="Outline of the change being made")
+    status: str = Field(default="done", description="Lifecycle status")
+    edits: List[FileOp] = Field(default_factory=list, description="Targeted file operations")
+
+
 class WorkerAgent(BaseAgent):
     """Lane worker agent (Frontend or Backend)."""
 
     def __init__(self, name: str, lane: Lane, bus: MessageBus, max_messages: int = 200):
         role = (
-            "You are a specialized Backend Engineer worker bee. You construct FastAPI endpoints, validators, and database schemas."
+            "You are a specialized Backend Engineer worker bee. You construct FastAPI endpoints, validators, and database schemas. "
+            "You have codebase tools: list_directory, search_code, file_read (with start_line/end_line), file_edit (search-and-replace), "
+            "file_write (create new files only), and command_run (allowlisted tests). ALWAYS read a target file before emitting an edit; "
+            "for existing files use targeted edit operations, never whole-file rewrites."
             if lane == Lane.BE
-            else "You are a specialized Frontend Engineer worker bee. You build HTML5, CSS, and JavaScript components matching backend API shapes."
+            else "You are a specialized Frontend Engineer worker bee. You build HTML5, CSS, and JavaScript components matching backend API shapes. "
+            "You have codebase tools: list_directory, search_code, file_read (with start_line/end_line), file_edit (search-and-replace), "
+            "file_write (create new files only), and command_run (allowlisted tests). ALWAYS read a target file before emitting an edit; "
+            "for existing files use targeted edit operations, never whole-file rewrites."
         )
         super().__init__(
             name=name,
@@ -56,6 +89,12 @@ class WorkerAgent(BaseAgent):
         self.bug_fixed = False
         self.has_phone_field = False
         self.current_spec: Optional[ProjectSpec] = None
+        # Gap 1/2/3: project harness mode (attached to an external repository)
+        self.project_mode = bool(
+            os.environ.get("SWARM_PROJECT_ROOT", "").strip()
+        )
+        # Gap 4: max self-correcting verify/patch cycles before escalating to Queen/user
+        self.max_self_check_attempts = int(os.environ.get("SWARM_MAX_FIX_RETRIES", "3"))
 
     async def write_deliverable_artifact(self, filename: str, content: str, run_id: str = "run-default") -> None:
         """
@@ -75,6 +114,442 @@ class WorkerAgent(BaseAgent):
             logger.warning(f"Worker deliverable write blocked: {tool_res.error}")
         else:
             logger.info(f"Worker '{self.name}' persisted deliverable '{clean_name}' ({len(content)} bytes)")
+
+    # ------------------------------------------------------------------
+    # Gap 2 & 3: read-before-patch helpers for project (external repo) mode
+    # ------------------------------------------------------------------
+
+    async def _execute_tool(self, run_id: str, tool: str, args: Dict[str, Any]) -> Any:
+        """Small wrapper around the ToolExecutor returning raw data or raising."""
+        from sidecar.permissions import default_executor
+        res = await default_executor.execute(
+            run_id=run_id,
+            agent=self.name,
+            tool=tool,
+            args=args,
+            context={"web_derived": False},
+            bus=self.bus,
+        )
+        if not res.success:
+            raise RuntimeError(res.error or f"Tool '{tool}' failed")
+        return res.data
+
+    async def _gather_codebase_context(self, run_id: str) -> str:
+        """Collects a compact read-only snapshot of the target repo for the Worker LLM."""
+        from sidecar.permissions import is_project_mode, get_project_root
+
+        parts: List[str] = []
+        if is_project_mode():
+            root = get_project_root()
+            if root:
+                parts.append(f"Target repository root: {root}")
+
+        # 1. Directory structure (depth 2)
+        try:
+            listing = await self._execute_tool(
+                run_id,
+                "list_directory",
+                {"path": ".", "recursive": True, "max_depth": 2},
+            )
+            tree = "\n".join(f"  {e['path']}" for e in listing.get("entries", []))
+            parts.append(f"Directory tree:\n{tree}")
+        except Exception as exc:
+            logger.warning(f"Worker '{self.name}' list_directory failed: {exc}")
+
+        # 2. Lane-relevant code snippets via search_code
+        lane_patterns = (
+            ["def ", "@app", "class "] if self.lane == Lane.BE else ["<body", "function ", "const "]
+        )
+        for pat in lane_patterns:
+            try:
+                found = await self._execute_tool(
+                    run_id,
+                    "search_code",
+                    {"pattern": re.escape(pat) if pat.startswith("<") else pat, "max_matches": 12},
+                )
+                hits = [
+                    f"  {m['file']}:{m['line']}: {m['text'].strip()[:120]}"
+                    for m in found.get("matches", [])
+                ]
+                if hits:
+                    parts.append(f"Code landmarks matching '{pat}':\n" + "\n".join(hits))
+            except Exception:
+                continue
+
+        return "\n\n".join(parts) if parts else "(empty workspace snapshot)"
+
+    async def _read_file_for_context(self, run_id: str, path: str, max_lines: int = 120) -> Optional[str]:
+        """Reads up to max_lines of a target file before emitting edits (read-before-patch rule)."""
+        try:
+            data = await self._execute_tool(
+                run_id,
+                "file_read",
+                {"path": path, "start_line": 1, "end_line": max_lines},
+            )
+            return str(data.get("content", ""))
+        except Exception as exc:
+            logger.warning(f"Worker '{self.name}' read of '{path}' failed: {exc}")
+            return None
+
+    def _path_exists_in_workspace(self, run_id: str, path: str) -> bool:
+        from sidecar.permissions import get_run_workspace, PathSafetyError
+        try:
+            base = get_run_workspace(run_id, create=False)
+            target = (base / path).resolve()
+            if not str(target).lower().startswith(str(base).lower()):
+                return False
+            return target.exists()
+        except (PathSafetyError, Exception):
+            return False
+
+    async def _apply_file_ops(
+        self,
+        run_id: str,
+        ops: List[FileOp],
+        card_id: str,
+        title: str,
+    ) -> int:
+        """
+        Applies targeted worker file operations via ToolExecutor.
+        - action='create': file_write (new files only).
+        - action='edit': MUST locate the target block in an existing file (read first,
+          then file_edit search-and-replace). Existing files are never overwritten wholesale.
+        Returns the number of successfully applied operations.
+        """
+        applied = 0
+        for op in ops:
+            rel_path = str(op.file).strip().replace("\\", "/").lstrip("/")
+            if not rel_path or ".." in rel_path:
+                logger.warning(f"Worker '{self.name}' rejected unsafe op path '{op.file}'")
+                continue
+
+            exists = self._path_exists_in_workspace(run_id, rel_path)
+
+            try:
+                if op.action == "create":
+                    if exists:
+                        # Never clobber an existing file with a whole-file create.
+                        existing = await self._read_file_for_context(run_id, rel_path)
+                        if existing and op.target and op.replacement:
+                            op = FileOp(
+                                file=rel_path, action="edit", target=op.target,
+                                replacement=op.replacement, intent=op.intent,
+                            )
+                        else:
+                            logger.warning(
+                                f"Worker '{self.name}' refused whole-file overwrite of existing '{rel_path}'"
+                            )
+                            await self.emit_feed_message(
+                                msg_type=MessageType.STATUS,
+                                content=(
+                                    f"{self.name.upper()}: Skipped overwrite of existing file '{rel_path}'. "
+                                    "Existing files require targeted edits."
+                                ),
+                                channel="build",
+                            )
+                            continue
+                    content = op.content if op.content is not None else ""
+                    await self.write_deliverable_artifact(rel_path, content, run_id=run_id)
+                    applied += 1
+                    await self.emit_feed_message(
+                        msg_type=MessageType.CHAT,
+                        content=f"{self.name.upper()}: Created '{rel_path}' — {op.intent or 'new file'}",
+                        channel="build",
+                    )
+
+                elif op.action == "edit":
+                    if not exists:
+                        content = op.content
+                        if content is None:
+                            logger.warning(
+                                f"Worker '{self.name}' edit target '{rel_path}' does not exist and no content given"
+                            )
+                            continue
+                        await self.write_deliverable_artifact(rel_path, content, run_id=run_id)
+                        applied += 1
+                        continue
+
+                    # Read-before-patch: confirm the target block actually exists
+                    existing_text = await self._read_file_for_context(run_id, rel_path, max_lines=400)
+                    if existing_text and op.target and op.target not in existing_text:
+                        raise RuntimeError(
+                            f"target block not present in '{rel_path}' near edit: '{op.target[:80]}'"
+                        )
+
+                    await self._execute_tool(
+                        run_id,
+                        "file_edit",
+                        {
+                            "path": rel_path,
+                            "target_block": op.target or "",
+                            "replacement_block": op.replacement or "",
+                        },
+                    )
+                    applied += 1
+                    await self.emit_feed_message(
+                        msg_type=MessageType.CHAT,
+                        content=(
+                            f"{self.name.upper()}: Edited '{rel_path}'"
+                            f" — {op.intent or 'targeted change'}"
+                        ),
+                        channel="build",
+                    )
+                else:
+                    logger.warning(f"Worker '{self.name}' unknown op action '{op.action}' skipped.")
+            except Exception as exc:
+                logger.warning(f"Worker '{self.name}' op failed for '{op.file}': {exc}")
+                await self.emit_feed_message(
+                    msg_type=MessageType.STATUS,
+                    content=f"{self.name.upper()}: Edit op failed for '{op.file}': {exc}",
+                    channel="build",
+                )
+        return applied
+
+    # ------------------------------------------------------------------
+    # Gap 4: self-correcting terminal execution loop
+    # ------------------------------------------------------------------
+
+    def _resolve_test_command(self, run_id: str) -> Optional[List[str]]:
+        """Chooses an allowlisted verification command suitable for the lane & repo."""
+        custom = os.environ.get("SWARM_TEST_COMMAND", "").strip()
+        if custom:
+            return custom.split()
+
+        exists = lambda p: self._path_exists_in_workspace(run_id, p)  # noqa: E731
+
+        if self.lane == Lane.BE:
+            if exists("pytest.ini") or exists("pyproject.toml") or exists("tests") or exists("tests/test_"):
+                return ["python", "-m", "pytest", "-q", "--no-header"]
+            return None
+        if exists("package.json"):
+            raw = ""
+            try:
+                from sidecar.permissions import get_run_workspace
+                raw = (get_run_workspace(run_id, create=False) / "package.json").read_text(encoding="utf-8")
+            except Exception:
+                raw = ""
+            try:
+                pkg = json.loads(raw) if raw else {}
+                if (pkg.get("scripts") or {}).get("test"):
+                    return ["npm", "test"]
+            except Exception:
+                pass
+        return None
+
+    def _is_no_tests_available(self, result_data: Dict[str, Any]) -> bool:
+        """Detects a command that failed because no test runner exists (treated as pass-through)."""
+        blob = (str(result_data.get("stdout", "")) + " " + str(result_data.get("stderr", ""))).lower()
+        markers = (
+            "no tests ran",
+            "no pytest",
+            "missing script",
+            "could not open file",
+            "no such file",
+        )
+        return any(m in blob for m in markers)
+
+    async def run_self_check_loop(self, run_id: str, card_id: str, title: str) -> bool:
+        """
+        Gap 4: runs the verification command, reads failures, emits corrective edits,
+        and repeats up to max_self_check_attempts before escalating to Queen/user.
+        Returns True when verification passes (or when no verification command applies).
+        """
+        command = self._resolve_test_command(run_id)
+        if command is None:
+            logger.info(f"Worker '{self.name}': no applicable test command for run '{run_id}'. Skipping self-check.")
+            return True
+
+        last_error: Optional[str] = None
+        last_result: Optional[Dict[str, Any]] = None
+
+        for attempt in range(1, self.max_self_check_attempts + 1):
+            try:
+                data = await self._execute_tool(
+                    run_id,
+                    "command_run",
+                    {"argv": command, "timeout_s": 60.0},
+                )
+                last_result = data
+                exit_code = int(data.get("exit_code", 1))
+
+                if exit_code == 0:
+                    await self.emit_feed_message(
+                        msg_type=MessageType.STATUS,
+                        content=(
+                            f"{self.name.upper()}: Self-check passed (attempt {attempt}): "
+                            f"`{' '.join(command)}` exit 0."
+                        ),
+                        channel="verify",
+                    )
+                    return True
+
+                # A command whose only failure is 'no test runner configured' is not a code failure
+                if self._is_no_tests_available(data):
+                    logger.info(f"Worker '{self.name}': no test runner available; skipping self-check.")
+                    return True
+
+                stderr = str(data.get("stderr", ""))
+                stdout = str(data.get("stdout", ""))
+                last_error = (stderr or stdout)[:2000]
+                logger.info(f"Worker '{self.name}': attempt {attempt} failed exit={exit_code}; diagnosing...")
+
+                # Ask the LLM to diagnose the failure and emit corrective targeted edits
+                failure_context = f"Command: {' '.join(command)}\nExit code: {exit_code}\n--- stderr/stdout ---\n{last_error}"
+                existing = await self._read_file_for_context(run_id, self._guess_failure_file(stderr or stdout), max_lines=250)
+                if existing:
+                    failure_context += f"\n\n--- current suspect file content ---\n{existing[:4000]}"
+
+                try:
+                    res = await complete(
+                        messages=[
+                            {"role": "system", "content": self.role_prompt},
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Your previous change broke verification. The command failed. Emit targeted "
+                                    "edit operations that fix the failure. Read ground truth from the provided files.\n\n"
+                                    + failure_context
+                                ),
+                            },
+                        ],
+                        tier="smart",
+                        json_schema=EditOpsSchema,
+                    )
+                    ops = res.parsed.edits if res.parsed else []
+                except Exception as exc:
+                    logger.warning(f"Worker '{self.name}' fix-op LLM call failed: {exc}")
+                    ops = []
+
+                if not ops:
+                    logger.info(f"Worker '{self.name}' produced no corrective ops on attempt {attempt}.")
+                    continue
+
+                await self._apply_file_ops(run_id, ops, card_id, title)
+            except Exception as exc:
+                last_error = str(exc)
+                logger.warning(f"Worker '{self.name}' self-check attempt {attempt} errored: {exc}")
+
+        # Escalation to Queen / user after retries exhausted
+        esc_summary = (
+            f"Worker '{self.name}' failed verification '{' '.join(command)}' "
+            f"after {self.max_self_check_attempts} attempts and is escalating."
+        )
+        await self.emit_card_upsert(
+            card_id=f"{card_id}-verify",
+            title=f"[ESCALATED] Verification failed: {title}",
+            summary=(
+                f"{esc_summary} Last error: {(last_error or 'unknown')[:300]}"
+            ),
+            status=CardStatus.FAILED,
+            lane=self.lane,
+        )
+        await self.emit_feed_message(
+            msg_type=MessageType.ERROR,
+            content=(
+                f"{self.name.upper()} → Queen / user: verification `{' '.join(command)}` still failing "
+                f"after {self.max_self_check_attempts} self-correction attempts. Last output: {(last_error or 'unknown')[:400]}"
+            ),
+            channel="build",
+        )
+        return False
+
+    def _guess_failure_file(self, error_text: str) -> str:
+        """Best-effort guess of the failing source file from a test/runtime error."""
+        _m = _failure_file_rx.search(error_text)
+        if _m:
+            return _m.group(1).replace("\\", "/")
+        return "index.html" if self.lane == Lane.FE else "api/main.py"
+
+    async def _execute_project_mode_task(
+        self,
+        run_id: str,
+        task_id: str,
+        title: str,
+        description: str,
+    ) -> bool:
+        """
+        Gap 2/3 project-mode path: snapshot the repo, prompt for targeted edits,
+        apply them, then run the Gap 4 verification loop. Returns True when ops applied.
+        """
+        context_snapshot = await self._gather_codebase_context(run_id)
+
+        prompt = (
+            f"Task: {title}\nDescription: {description}\n\n"
+            f"Codebase snapshot (read-only):\n{context_snapshot}\n\n"
+            "Emit targeted file operations. For EXISTING files use action='edit' with the exact "
+            "target code block and its replacement. For brand-new files use action='create' with full "
+            "content. Never rewrite an existing file wholesale.")
+        if self.received_peer_contract:
+            prompt += f"\nPeer contract provided: {self.received_peer_contract}"
+
+        ops: List[FileOp] = []
+        deliverable_msg = ""
+        tech_spec = ""
+        try:
+            res = await complete(
+                messages=[
+                    {"role": "system", "content": self.role_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                tier="smart",
+                json_schema=EditOpsSchema,
+            )
+            if res.parsed:
+                ops = res.parsed.edits or []
+                deliverable_msg = res.parsed.message
+                tech_spec = res.parsed.technical_spec
+        except Exception as exc:
+            logger.warning(f"Worker '{self.name}' project-mode completion failed: {exc}")
+
+        if deliverable_msg:
+            await self.emit_feed_message(
+                msg_type=MessageType.CHAT,
+                content=f"{self.name.upper()}: {deliverable_msg}",
+                channel="build",
+                metadata={"spec": tech_spec},
+            )
+
+        if not ops:
+            # Guard against blind template generation in an existing repo.
+            logger.warning(
+                f"Worker '{self.name}' received no targeted edit ops; refusing to overwrite existing repo files."
+            )
+            await self.emit_feed_message(
+                msg_type=MessageType.STATUS,
+                content=(
+                    f"{self.name.upper()}: No targeted edit operations were available for this task; "
+                    "skipping generation to protect the existing codebase."
+                ),
+                channel="build",
+            )
+            return False
+
+        self._lane_specific_contract_announce(run_id)
+        await self._apply_file_ops(run_id, ops, task_id, title)
+        return True
+
+    def _lane_specific_contract_announce(self, run_id: str) -> None:
+        if self.lane != Lane.BE:
+            return
+        endpoint = self.current_spec.api_endpoint if self.current_spec else "/api/waitlist"
+        contract_snippet = f"POST {endpoint} -> Request: dynamic JSON schema -> Response: 201 Created {{status, message, data}}"
+        if contract_snippet not in self._broadcasted_contracts:
+            self._broadcasted_contracts.add(contract_snippet)
+            # Emitted asynchronously from execute_task to avoid blocking the sync helper
+            async def _emit():
+                await self.emit_feed_message(
+                    msg_type=MessageType.CHAT,
+                    content=f"BE Worker -> FE Worker: Locked API endpoint contract: `{contract_snippet}`",
+                    channel="build",
+                    intent="decision",
+                    metadata={"contract": contract_snippet, "topic": "API Contract", "agreed_by": ["be_worker", "fe_worker"]},
+                    lane=Lane.FE,
+                )
+            import asyncio as _asyncio
+            try:
+                _asyncio.get_running_loop().create_task(_emit())
+            except RuntimeError:
+                pass
 
     async def _write_frontend_project(
         self,
@@ -474,34 +949,54 @@ async def handle_submission(req: Dict[str, Any]):
             )
 
             # Write real files into workspace/<run_id>/
-            if self.lane == Lane.BE:
-                endpoint = self.current_spec.api_endpoint if self.current_spec else "/api/waitlist"
-                contract_snippet = f"POST {endpoint} -> Request: dynamic JSON schema -> Response: 201 Created {{status, message, data}}"
-                if contract_snippet not in self._broadcasted_contracts:
-                    self._broadcasted_contracts.add(contract_snippet)
-                    await self.emit_feed_message(
-                        msg_type=MessageType.CHAT,
-                        content=f"BE Worker -> FE Worker: Locked API endpoint contract: `{contract_snippet}`",
-                        channel="build",
-                        intent="decision",
-                        metadata={"contract": contract_snippet, "topic": "API Contract", "agreed_by": ["be_worker", "fe_worker"]},
-                        lane=Lane.FE,
-                    )
-                await self._write_backend_project(run_id=run_id, spec=self.current_spec)
+            build_ok = True
+            if self.project_mode:
+                # Gap 1/2/3: attached to an external repo — read, then emit targeted edits
+                ops_applied = await self._execute_project_mode_task(run_id, task_id, title, description)
+                build_ok = ops_applied
+                # Gap 4: self-correcting terminal verification loop
+                if ops_applied:
+                    build_ok = await self.run_self_check_loop(run_id, task_id, title)
+            else:
+                if self.lane == Lane.BE:
+                    endpoint = self.current_spec.api_endpoint if self.current_spec else "/api/waitlist"
+                    contract_snippet = f"POST {endpoint} -> Request: dynamic JSON schema -> Response: 201 Created {{status, message, data}}"
+                    if contract_snippet not in self._broadcasted_contracts:
+                        self._broadcasted_contracts.add(contract_snippet)
+                        await self.emit_feed_message(
+                            msg_type=MessageType.CHAT,
+                            content=f"BE Worker -> FE Worker: Locked API endpoint contract: `{contract_snippet}`",
+                            channel="build",
+                            intent="decision",
+                            metadata={"contract": contract_snippet, "topic": "API Contract", "agreed_by": ["be_worker", "fe_worker"]},
+                            lane=Lane.FE,
+                        )
+                    await self._write_backend_project(run_id=run_id, spec=self.current_spec)
 
-            if self.lane == Lane.FE:
-                has_bug = self.seeded_bug_active and not self.bug_fixed
-                await self._write_frontend_project(run_id=run_id, spec=self.current_spec, with_bug=has_bug)
-                if has_bug:
-                    logger.info(f"Seeded bug introduced into workspace '{run_id}' by FE Worker (button disabled).")
+                if self.lane == Lane.FE:
+                    has_bug = self.seeded_bug_active and not self.bug_fixed
+                    await self._write_frontend_project(run_id=run_id, spec=self.current_spec, with_bug=has_bug)
+                    if has_bug:
+                        logger.info(f"Seeded bug introduced into workspace '{run_id}' by FE Worker (button disabled).")
 
-            await self.emit_card_upsert(
-                card_id=task_id,
-                title=title,
-                summary=f"Completed by {self.name.upper()}: {description}",
-                status=CardStatus.DONE,
-                lane=self.lane,
-            )
+            if build_ok:
+                await self.emit_card_upsert(
+                    card_id=task_id,
+                    title=title,
+                    summary=f"Completed by {self.name.upper()}: {description}",
+                    status=CardStatus.DONE,
+                    lane=self.lane,
+                )
+            else:
+                await self.emit_card_upsert(
+                    card_id=task_id,
+                    title=title,
+                    summary=(
+                        f"Task '{title}' did not complete cleanly and was escalated for human steering."
+                    ),
+                    status=CardStatus.FAILED,
+                    lane=self.lane,
+                )
 
             await self.emit_feed_message(
                 msg_type=MessageType.STATUS,

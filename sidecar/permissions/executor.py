@@ -6,9 +6,12 @@ timed out, or denied. All outputs and audit logs are redacted.
 """
 
 import os
+import re
+import fnmatch
 import time
 import uuid
 import asyncio
+import tempfile
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
@@ -389,7 +392,27 @@ class ToolExecutor:
         """Dispatches validated tool invocation to its underlying handler."""
         if tool == "file_read":
             target_path = resolve_safe_path(run_id, args["path"], must_exist=True)
-            return {"content": target_path.read_text(encoding="utf-8", errors="replace"), "path": str(target_path)}
+            content = target_path.read_text(encoding="utf-8", errors="replace")
+            # Gap 3: support line-windowed reads to avoid overloading agent context
+            lines = content.splitlines()
+            total = len(lines)
+            start_line = args.get("start_line")
+            end_line = args.get("end_line")
+            if start_line is not None or end_line is not None:
+                s = max(1, int(start_line) if start_line is not None else 1)
+                e = min(total, int(end_line) if end_line is not None else total)
+                window = "\n".join(lines[s - 1 : e])
+                return {"content": window, "path": str(target_path), "total_lines": total, "start_line": s, "end_line": e}
+            return {"content": content, "path": str(target_path), "total_lines": total}
+
+        elif tool == "file_edit":
+            return self._tool_edit_file(run_id, args)
+
+        elif tool == "list_directory":
+            return self._tool_list_directory(run_id, args)
+
+        elif tool == "search_code":
+            return self._tool_search_code(run_id, args)
 
         elif tool == "file_write":
             target_path = resolve_safe_path(run_id, args["path"], for_write=True)
@@ -443,6 +466,208 @@ class ToolExecutor:
             return {"status": "ok", "tool": tool, "args": args}
 
         raise NotImplementedError(f"Handler for tool '{tool}' is not implemented.")
+
+    # --- Gap 2 & 3: targeted-diff and read-only codebase exploration tools ---
+
+    def _tool_edit_file(self, run_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Gap 2: targeted search-and-replace editing. Locates the exact target_block
+        in the file and replaces it with replacement_block. Fails safely when the
+        target is not found or matches more than once (unless an explicit
+        occurrence number is given). Uses atomic file replacement.
+        """
+        target_path = resolve_safe_path(run_id, args["path"], must_exist=True)
+        if not target_path.is_file():
+            raise FileNotFoundError(f"edit_file target is not a file: '{args['path']}'")
+
+        target_block = str(args["target_block"]) if "target_block" in args else str(args["target"])
+        replacement_block = str(args["replacement_block"] if "replacement_block" in args else args["replacement"])
+
+        encoding = "utf-8"
+        text = target_path.read_text(encoding=encoding, errors="replace")
+        count = text.count(target_block)
+
+        if count == 0:
+            raise ValueError(
+                f"edit_file failed: target_block not found in '{args['path']}'. Read the file with file_read first."
+            )
+
+        occurrence = args.get("occurrence")
+        if count > 1 and occurrence is None:
+            raise ValueError(
+                f"edit_file failed: target_block is ambiguous ({count} matches) in '{args['path']}'. "
+                "Provide a unique target_block or an explicit 'occurrence' index (1-based)."
+            )
+
+        occurrence_n = int(occurrence) if occurrence is not None else 1
+        if occurrence_n < 1 or occurrence_n > count:
+            raise ValueError(
+                f"edit_file failed: occurrence {occurrence_n} out of range ({count} matches available)."
+            )
+
+        # Locate the chosen occurrence and replace only that one
+        idx = -1
+        for _ in range(occurrence_n):
+            idx = text.find(target_block, idx + 1)
+        line_number = text.count("\n", 0, idx) + 1
+
+        new_text = text[:idx] + replacement_block + text[idx + len(target_block):]
+
+        # Atomic replacement: write to a temp file in the same directory, then os.replace
+        parent = target_path.parent
+        tmp_fd, tmp_name = tempfile.mkstemp(dir=str(parent), suffix=".swarm-edit")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding=encoding) as tmp:
+                tmp.write(new_text)
+            os.replace(tmp_name, target_path)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+
+        return {
+            "path": str(target_path),
+            "occurrence": occurrence_n,
+            "match_count": count,
+            "line_number": line_number,
+            "bytes_written": len(new_text.encode(encoding)),
+            "success": True,
+        }
+
+    @staticmethod
+    def _ignored_dir_names() -> List[str]:
+        """Directories never traversed by read-only exploration tools."""
+        return {
+            ".git", ".venv", "venv", "node_modules", "__pycache__",
+            "dist", "build", ".pytest_cache", ".mypy_cache", ".idea",
+            ".vscode", "target", "coverage", ".next",
+        }
+
+    def _iter_safe_files(self, base: Path, max_files: int = 2000):
+        """Yields workspace files while skipping dependency caches and secret patterns."""
+        from .path_safety import FORBIDDEN_FILE_PATTERNS
+
+        ignored = self._ignored_dir_names()
+        count = 0
+        for p in base.rglob("*"):
+            if count >= max_files:
+                return
+            # Skip ignored subtree members efficiently
+            rel_parts = set(p.relative_to(base).parts[:-1])
+            if rel_parts & ignored:
+                continue
+            if not p.is_file():
+                continue
+            if any(pat.match(p.name) for pat in FORBIDDEN_FILE_PATTERNS):
+                continue
+            count += 1
+            yield p
+
+    def _resolve_explore_root(self, run_id: str, dir_path: str) -> Path:
+        """Resolves a directory arg for exploration tools, defaulting to the workspace root."""
+        if dir_path in ("", "."):
+            return get_run_workspace(run_id, create=False)
+        resolved = resolve_safe_path(run_id, dir_path, must_exist=True)
+        if not resolved.is_dir():
+            raise ValueError(f"Expected a directory, got file: '{dir_path}'")
+        return resolved
+
+    def _tool_list_directory(self, run_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Gap 3: read-only directory exploration for workers.
+        Args: path='.', recursive=False, max_depth=2.
+        """
+        base = self._resolve_explore_root(run_id, str(args.get("path", ".")))
+        recursive = bool(args.get("recursive", False))
+        max_depth = int(args.get("max_depth", 2))
+        ignored = self._ignored_dir_names()
+
+        entries: List[Dict[str, Any]] = []
+        if recursive:
+            for p in self._iter_safe_files(base, max_files=500):
+                rel = p.relative_to(base)
+                if len(rel.parts) > max_depth + 1:
+                    continue
+                entries.append({
+                    "type": "file",
+                    "path": rel.as_posix(),
+                    "size": p.stat().st_size,
+                })
+        else:
+            for child in sorted(base.iterdir()):
+                rel_name = child.name
+                if rel_name in ignored:
+                    continue
+                entries.append({
+                    "type": "directory" if child.is_dir() else "file",
+                    "path": rel_name,
+                    "size": child.stat().st_size if child.is_file() else None,
+                })
+                if len(entries) >= 500:
+                    break
+
+        return {
+            "root": base.as_posix(),
+            "entries": entries,
+            "count": len(entries),
+            "truncated": len(entries) >= 500,
+        }
+
+    def _tool_search_code(self, run_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Gap 3: regex code search across the run workspace (ripgrep fallback in pure Python).
+        Args: pattern (required), file_pattern (glob like '*.py'), path='.'.
+        Returns up to 50 matches with file, line number, and matched text.
+        """
+        pattern_str = args.get("pattern") or args.get("query")
+        if not pattern_str or not str(pattern_str).strip():
+            raise ValueError("search_code requires a non-empty 'pattern'.")
+        try:
+            rx = re.compile(str(pattern_str))
+        except re.error as exc:
+            raise ValueError(f"Invalid search pattern: {exc}")
+
+        file_pattern = args.get("file_pattern")
+        base = self._resolve_explore_root(run_id, str(args.get("path", ".")))
+        max_matches = int(args.get("max_matches", 50))
+
+        matches: List[Dict[str, Any]] = []
+        scanned_files = 0
+        for p in self._iter_safe_files(base, max_files=1500):
+            if file_pattern and not fnmatch.fnmatch(p.name, str(file_pattern)):
+                continue
+            scanned_files += 1
+            try:
+                with open(p, "r", encoding="utf-8", errors="replace") as fh:
+                    for line_no, line in enumerate(fh, start=1):
+                        if rx.search(line):
+                            matches.append({
+                                "file": p.relative_to(base).as_posix(),
+                                "line": line_no,
+                                "text": line.rstrip("\r\n")[:300],
+                            })
+                            if len(matches) >= max_matches:
+                                return {
+                                    "pattern": str(pattern_str),
+                                    "file_pattern": file_pattern,
+                                    "matches": matches,
+                                    "count": len(matches),
+                                    "files_scanned": scanned_files,
+                                    "truncated": True,
+                                }
+            except (OSError, PermissionError):
+                continue
+
+        return {
+            "pattern": str(pattern_str),
+            "file_pattern": file_pattern,
+            "matches": matches,
+            "count": len(matches),
+            "files_scanned": scanned_files,
+            "truncated": False,
+        }
 
     async def _emit_deny_events(self, bus: Any, agent: str, tool: str, decision: Decision) -> None:
         """Emits compact feed message and whiteboard card guard evidence upon denial."""

@@ -9,7 +9,7 @@ and access to sensitive system or credential files (Windows and POSIX safe).
 import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 
 class PathSafetyError(PermissionError):
@@ -49,6 +49,46 @@ def get_repo_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+def get_project_root() -> Optional[Path]:
+    """
+    Returns the user-configured external project root (Gap 1), or None.
+    Read from SWARM_PROJECT_ROOT env var (or set at runtime via set_project_root).
+    When set, all agent file operations target this folder instead of workspace/<run_id>/.
+    """
+    raw = _PROJECT_ROOT_OVERRIDE or os.environ.get("SWARM_PROJECT_ROOT", "")
+    raw = str(raw).strip()
+    if not raw:
+        return None
+    return Path(raw).resolve()
+
+
+def set_project_root(path: Union[str, Path, None]) -> None:
+    """
+    Runtime override for the project root (used by the --project-dir CLI flag).
+    Validates that the directory exists before accepting it.
+    """
+    global _PROJECT_ROOT_OVERRIDE
+    if path is None or (isinstance(path, str) and not path.strip()):
+        _PROJECT_ROOT_OVERRIDE = None
+        return
+
+    resolved = Path(str(path)).expanduser().resolve()
+    if not resolved.exists() or not resolved.is_dir():
+        raise PathSafetyError(
+            f"--project-dir '{resolved}' does not exist or is not a directory."
+        )
+    _PROJECT_ROOT_OVERRIDE = resolved
+
+
+# Module-level runtime override for set_project_root (CLI flag support)
+_PROJECT_ROOT_OVERRIDE: Optional[Path] = None
+
+
+def is_project_mode() -> bool:
+    """True when Swarm is attached to an external user project (Gap 1 mode)."""
+    return get_project_root() is not None
+
+
 def validate_run_id(run_id: str) -> str:
     """Validates that a run_id contains only safe identifier characters."""
     if not run_id or not isinstance(run_id, str):
@@ -61,10 +101,21 @@ def validate_run_id(run_id: str) -> str:
 
 def get_run_workspace(run_id: str, create: bool = True) -> Path:
     """
-    Returns the resolved Path for workspace/<run_id>/.
-    Creates the folder if requested and not present.
+    Returns the resolved run workspace directory.
+
+    Gap 1: When SWARM_PROJECT_ROOT (or --project-dir) is configured, agents work
+    directly inside the user's existing repository instead of workspace/<run_id>/.
+    All path-safety boundaries (forbidden secret files, traversal, escapes) still apply.
     """
     valid_id = validate_run_id(run_id)
+    project_root = get_project_root()
+    if project_root is not None:
+        # Escape-the-sandbox mode: resolve to the user's chosen project folder.
+        if not project_root.exists() or not project_root.is_dir():
+            raise PathSafetyError(
+                f"SWARM_PROJECT_ROOT '{project_root}' does not exist or is not a directory."
+            )
+        return project_root
     repo_root = get_repo_root()
     workspace = (repo_root / "workspace" / valid_id).resolve()
     if create and not workspace.exists():
