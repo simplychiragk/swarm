@@ -11,9 +11,21 @@ Provides:
 import os
 import uuid
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
+
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
@@ -255,12 +267,11 @@ async def websocket_endpoint(
     await broadcaster.connect(websocket, run_id=run_id, after_seq=after_seq)
 
     global mock_auto_started
-    # In mock or golden demo mode, auto-trigger the mock scenario ONCE on the very first client connection.
-    # Do NOT auto-trigger on reconnects or subsequent connections!
     demo_mode = os.environ.get("SWARM_DEMO_MODE", "").lower()
-    if (get_swarm_mode() == "mock" or demo_mode == "golden") and not mock_auto_started and not mock_runner.is_running:
+    auto_demo = os.environ.get("SWARM_AUTO_RUN_DEMO", "").lower() in ("true", "1", "yes")
+    if (auto_demo or demo_mode == "golden") and not mock_auto_started and not mock_runner.is_running:
         mock_auto_started = True
-        logger.info(f"Initial client connected (mode={get_swarm_mode()}, demo_mode={demo_mode}); initiating scenario stream once.")
+        logger.info(f"Auto-demo enabled (demo_mode={demo_mode}); initiating scenario stream once.")
         mock_runner.start(delay_seconds=1.2)
 
     try:
@@ -305,8 +316,8 @@ async def start_mock_scenario(req: Optional[MockControlRequest] = None):
 
 @app.post("/mock/reset")
 @app.post("/runs/reset")
-async def reset_mock_scenario():
-    """Reset history and stop any active mock stream or live run manager."""
+async def reset_mock_scenario(run_id: str = "run-default"):
+    """Reset history and storage, stopping any active mock stream or live run manager."""
     global mock_auto_started, active_run_manager
     mock_runner.stop()
     if hasattr(active_run_manager, "stop"):
@@ -317,8 +328,13 @@ async def reset_mock_scenario():
     from sidecar.agents.run_manager import SwarmRunManager
     active_run_manager = SwarmRunManager()
     broadcaster.clear_history()
+    try:
+        from sidecar.storage import get_storage
+        get_storage().reset_run(run_id)
+    except Exception as e:
+        logger.warning(f"Failed to reset run storage: {e}")
     mock_auto_started = True
-    return {"status": "reset", "history_len": 0}
+    return {"status": "reset", "history_len": 0, "run_id": run_id}
 
 
 class RouteTaskRequest(BaseModel):

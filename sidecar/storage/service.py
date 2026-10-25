@@ -474,6 +474,25 @@ class StorageService:
             "avg_latency_ms": round(row["avg_latency_ms"] or 0.0, 2),
         }
 
+    def reset_run(self, run_id: str = "run-default") -> None:
+        """Deletes all events, cards, approvals, artifacts, and decisions for the specified run."""
+        with self.db._lock:
+            for table in [
+                "events",
+                "cards",
+                "approvals",
+                "artifacts",
+                "llm_calls",
+                "decisions",
+                "steers",
+                "delivery_decisions",
+                "permission_events",
+            ]:
+                try:
+                    self.db.execute_write(f"DELETE FROM {table} WHERE run_id = ?", (run_id,))
+                except Exception as e:
+                    logger.warning(f"Failed to clear table {table} for run {run_id}: {e}")
+
 
 _storage_instance: Optional[StorageService] = None
 
